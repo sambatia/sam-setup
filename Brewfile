@@ -248,7 +248,6 @@ cask "1password-cli"
 # Open source IDE for exploring and testing APIs
 cask "bruno"
 # Screen capturing tool
-cask "cleanshot"
 # OpenAI's coding agent that runs in your terminal
 cask "codex"
 # Menu bar usage monitor for Codex and Claude

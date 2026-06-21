@@ -1,8 +1,15 @@
-{{/* chezmoi config — identity. Prefers env vars (for non-interactive / CI),
-     else prompts ONCE on `chezmoi init`. Never commits secrets. */}}
-{{- $name   := or (env "SAM_SETUP_NAME")  (promptStringOnce . "name"  "Your full name (for git commits)") -}}
-{{- $email  := or (env "SAM_SETUP_EMAIL") (promptStringOnce . "email" "Your git email") -}}
-{{- $genKey := promptBoolOnce . "genKey" "Generate a fresh SSH key if you have none" true -}}
+{{/* chezmoi config — identity.
+     Interactive (a real terminal): prompt for name/email/genKey once.
+     Non-interactive (CI, scripted): take SAM_SETUP_NAME / SAM_SETUP_EMAIL from the
+     environment and default genKey=true. Never commits secrets. */}}
+{{- $name   := env "SAM_SETUP_NAME" -}}
+{{- $email  := env "SAM_SETUP_EMAIL" -}}
+{{- $genKey := true -}}
+{{- if stdinIsATTY -}}
+{{-   $name   = or $name  (promptStringOnce . "name"  "Your full name (for git commits)") -}}
+{{-   $email  = or $email (promptStringOnce . "email" "Your git email") -}}
+{{-   $genKey = promptBoolOnce . "genKey" "Generate a fresh SSH key if you have none" true -}}
+{{- end -}}
 
 [data]
     name   = {{ $name   | quote }}
