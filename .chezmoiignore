@@ -1,9 +1,21 @@
-# Files chezmoi should NOT manage on the friend's machine.
-# T9: list dotfiles friends commonly customize so `chezmoi update` won't clobber
-# them (e.g. local shell overrides). Repo meta never gets applied to $HOME:
+# Repo meta — NEVER apply these to the friend's $HOME. chezmoi treats every
+# source file as a target unless ignored here, so list all non-dotfile files.
 README.md
 LICENSE
-Brewfile
+CHANGELOG.md
+justfile
 bootstrap.sh
+Brewfile
+Brewfile.full
+.gitignore
 .github
+.github/**
 tests
+tests/**
+home
+home/**
+
+# T9: also ignore files a friend commonly customizes, so `chezmoi update` won't
+# clobber their local tweaks (the configs themselves source these if present):
+.zshrc.local
+.config/ghostty/config.local

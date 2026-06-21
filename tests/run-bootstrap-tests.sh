@@ -65,6 +65,14 @@ if command -v chezmoi >/dev/null 2>&1; then
     *'name   = "Test User"'*) ok "tmpl: config renders + env-seeds identity (CI-friendly)" ;;
     *) bad "tmpl: config render/env-seed failed" ;;
   esac
+  # .chezmoiignore guard: repo-meta (README, justfile, Brewfile, …) must NEVER
+  # be applied to a friend's $HOME. Regression test for the managed-targets bug.
+  managed="$(chezmoi managed --source="$DIR" 2>/dev/null)"
+  if printf '%s\n' "$managed" | grep -qE '^(README|LICENSE|CHANGELOG|justfile|Brewfile|bootstrap|home$|home/)'; then
+    bad "chezmoiignore: repo-meta leaks into \$HOME targets"
+  else
+    ok "chezmoiignore: no repo-meta in managed targets"
+  fi
 else
   printf '  %s· chezmoi absent — template render checks skipped%s\n' "${GRN}" "${RST}"
 fi
