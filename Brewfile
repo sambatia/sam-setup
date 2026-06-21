@@ -11,8 +11,6 @@ tap "dlvhdr/formulae"
 tap "dopplerhq/doppler"
 tap "hashicorp/tap"
 tap "nats-io/nats-tools"
-tap "resend/cli"
-tap "steipete/tap"
 # Run your GitHub Actions locally
 brew "act"
 # Simple, modern, secure file encryption
@@ -245,8 +243,6 @@ brew "aquasecurity/trivy/trivy", trusted: true
 brew "dagger/tap/dagger", trusted: true
 # NATS utility
 brew "nats-io/nats-tools/nats", trusted: true
-# Command-line interface for Resend
-brew "resend/cli/resend", trusted: true
 # Command-line interface for 1Password
 cask "1password-cli"
 # Open source IDE for exploring and testing APIs
@@ -256,7 +252,6 @@ cask "cleanshot"
 # OpenAI's coding agent that runs in your terminal
 cask "codex"
 # Menu bar usage monitor for Codex and Claude
-cask "steipete/tap/codexbar", trusted: true
 cask "font-fira-code-nerd-font"
 cask "font-hack-nerd-font"
 cask "font-jetbrains-mono"
@@ -265,11 +260,9 @@ cask "font-meslo-lg-nerd-font"
 # Terminal emulator that uses platform-native UI and GPU acceleration
 cask "ghostty"
 # Enables an integrated web browser in iTerm2
-cask "itermbrowserplugin"
 # Replacement for Docker Desktop
 cask "orbstack"
 # Native terminal coding agents command center
-cask "supacode"
 # Native GUI tool for relational databases
 cask "tableplus"
 go "github.com/air-verse/air"

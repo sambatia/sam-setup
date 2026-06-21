@@ -2,22 +2,20 @@
 node = "24.16.0"
 pnpm = "11.8.0"
 
-# Global npm CLIs migrated off Volta (2026-06-21). These live in node's prefix,
-# so they're tied to the node version above. After a node bump
-# (`mise use -g node@<newer>`), run `mise run node-globals` to reinstall them.
-# eslint/prettier intentionally excluded (decided-against → biome).
+# Global npm CLIs (the shareable AI-engineering + web-dev core). They live in
+# node's prefix, so they're tied to the node version above — after a node bump
+# (`mise use -g node@<newer>`) run `mise run node-globals` to reinstall.
+# This is a starter set: trim or extend to taste. (Work/account-specific tools
+# and eslint/prettier — decided-against in favour of biome — are intentionally out.)
 [tasks.node-globals]
-description = "Reinstall global npm CLIs after a node major bump"
+description = "Reinstall the global npm CLIs after a node major bump"
 run = """
 npm install -g \
   @anthropic-ai/claude-code @openai/codex @google/gemini-cli opencode-ai \
-  @earendil-works/pi-coding-agent claude-mem ccusage repomix gitnexus skills \
+  repomix \
   @modelcontextprotocol/server-filesystem @modelcontextprotocol/server-memory \
-  @modelcontextprotocol/server-sequential-thinking @playwright/mcp \
-  @upstash/context7-mcp chrome-devtools-mcp mcp-omnisearch @railway/mcp-server \
-  @presto-ai/google-workspace-mcp @azure-devops/mcp @colbymchenry/codegraph \
-  wrangler vercel neonctl @railway/cli drizzle-kit turbo tsx ts-node typescript \
-  inngest-cli resend-cli @tizentv/wits carbonyl \
-  playwright @modelcontextprotocol/inspector tree-sitter-cli
+  @modelcontextprotocol/server-sequential-thinking @modelcontextprotocol/inspector \
+  @playwright/mcp @upstash/context7-mcp chrome-devtools-mcp \
+  wrangler vercel drizzle-kit turbo tsx typescript playwright tree-sitter-cli
 mise reshim
 """
