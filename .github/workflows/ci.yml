@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Lint + Secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # gitleaks needs history
+
+      - name: ShellCheck
+        run: shellcheck -S warning bootstrap.sh tests/*.sh 2>/dev/null || shellcheck -S warning bootstrap.sh
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # T11 — add a macOS smoke job that runs bootstrap.sh non-interactively
+  # (SAM_SETUP_YES=1 + env-seeded identity) and asserts key tools resolve.
+  # Note: macos-latest is a WARM runner — it does NOT validate the cold-start
+  # path (xcode CLT / no-brew). Real cold-start = watch one friend on a fresh Mac.

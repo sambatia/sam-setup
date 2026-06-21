@@ -1,0 +1,9 @@
+# Files chezmoi should NOT manage on the friend's machine.
+# T9: list dotfiles friends commonly customize so `chezmoi update` won't clobber
+# them (e.g. local shell overrides). Repo meta never gets applied to $HOME:
+README.md
+LICENSE
+Brewfile
+bootstrap.sh
+.github
+tests

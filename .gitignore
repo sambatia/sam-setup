@@ -1,0 +1,14 @@
+# OS
+.DS_Store
+._*
+
+# Local secrets — NEVER commit (this is a PUBLIC repo)
+.env
+.env.*
+*.pem
+*.key
+id_ed25519
+id_rsa
+
+# chezmoi local state
+.chezmoistate

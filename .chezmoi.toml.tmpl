@@ -1,0 +1,9 @@
+{{/* chezmoi config template — prompts ONCE on `chezmoi init`, never commits secrets. */}}
+{{- $name  := promptStringOnce . "name"  "Your full name (for git commits)" -}}
+{{- $email := promptStringOnce . "email" "Your git email" -}}
+{{- $genKey := promptBoolOnce . "genKey" "Generate a fresh SSH key if you have none" -}}
+
+[data]
+    name   = {{ $name   | quote }}
+    email  = {{ $email  | quote }}
+    genKey = {{ $genKey }}
