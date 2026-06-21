@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+#
+# run_onchange_after — install the Brewfile. The Brewfile is embedded below via
+# chezmoi's `include`, so this script's CONTENT changes whenever the Brewfile
+# changes — which is exactly when chezmoi re-runs a run_onchange_ script. That's
+# the fix for the "run_onchange + sentinel" trap: no separate sentinel needed,
+# and a Brewfile edit reliably triggers a fresh `brew bundle`.
+#
+# Brewfile sha256: {{ include "Brewfile" | sha256sum }}
+#
+set -eu
+
+command -v brew >/dev/null 2>&1 || { echo "brew missing — skipping bundle"; exit 0; }
+eval "$(brew shellenv)" 2>/dev/null || true
+
+echo "Installing packages from the Brewfile (this is the long part — go get coffee)…"
+brew bundle --no-lock --file=/dev/stdin <<'BREWFILE'
+{{ include "Brewfile" }}
+BREWFILE
+echo "✓ packages installed."

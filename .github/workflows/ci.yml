@@ -17,16 +17,33 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # gitleaks needs history
-
       - name: ShellCheck
-        run: shellcheck -S warning bootstrap.sh tests/*.sh 2>/dev/null || shellcheck -S warning bootstrap.sh
-
+        run: |
+          shellcheck -S warning \
+            bootstrap.sh \
+            tests/run-bootstrap-tests.sh \
+            .chezmoiscripts/run_once_before_05-backup-existing.sh \
+            .chezmoiscripts/run_after_20-ssh-key.sh \
+            dot_local/bin/executable_sam-setup-restore
       - name: Secret scan (gitleaks)
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # T11 — add a macOS smoke job that runs bootstrap.sh non-interactively
-  # (SAM_SETUP_YES=1 + env-seeded identity) and asserts key tools resolve.
-  # Note: macos-latest is a WARM runner — it does NOT validate the cold-start
-  # path (xcode CLT / no-brew). Real cold-start = watch one friend on a fresh Mac.
+  test:
+    name: Unit tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]   # macOS catches bash 3.2 quirks
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run unit tests
+        run: ./tests/run-bootstrap-tests.sh
+
+  # T11 (deferred): a full brew-bundle install smoke is intentionally NOT run in
+  # CI — 117 formulae + casks is slow and some casks prompt for sudo even on a
+  # runner. macos-latest is also a WARM box (brew/git/Xcode pre-installed), so it
+  # would not validate the cold-start path anyway. The real cold-start test is
+  # watching one friend run it on a fresh Mac.

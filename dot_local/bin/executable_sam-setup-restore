@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+#
+# sam-setup-restore — undo an apply by restoring the most recent backup of each
+# managed config (the .bak-<ts> copies made on first install). Installed to
+# ~/.local/bin by chezmoi. Rollback, not just backup (eng-review T8).
+#
+set -eu
+
+restored=0
+for base in \
+  "$HOME/.zshrc" "$HOME/.gitconfig" "$HOME/.tmux.conf" \
+  "$HOME/.config/nvim" "$HOME/.config/mise" "$HOME/.config/starship.toml"; do
+  bak="$(ls -dt "$base".bak-* 2>/dev/null | head -1 || true)"
+  [ -n "$bak" ] || continue
+  rm -rf "$base"
+  mv "$bak" "$base"
+  printf 'restored %s\n  from %s\n' "$base" "$bak"
+  restored=$((restored + 1))
+done
+
+if [ "$restored" -eq 0 ]; then
+  echo "nothing to restore (no .bak-* backups found)."
+else
+  echo "✓ restored $restored item(s). Run 'chezmoi purge' to also drop chezmoi's source state."
+fi
