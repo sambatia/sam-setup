@@ -1,0 +1,5 @@
+# ~/.zshenv — loaded for ALL zsh invocations (incl. non-interactive).
+# Keep this minimal. No secrets here (use the Keychain — see ~/.zshrc).
+
+# Respect XDG defaults.
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"

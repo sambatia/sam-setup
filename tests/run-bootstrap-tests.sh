@@ -53,5 +53,21 @@ HOME="$FAKEHOME" bash "$DIR/dot_local/bin/executable_sam-setup-restore" >/dev/nu
 [ ! -e "$FAKEHOME/.zshrc.bak-20260101-000000" ] && ok "restore: consumes the backup" || bad "restore: backup not consumed"
 rm -rf "$FAKEHOME"
 
+# ── chezmoi template render (the .tmpl files aren't shellcheck-covered) ──────
+if command -v chezmoi >/dev/null 2>&1; then
+  chezmoi execute-template --source="$DIR" \
+    < "$DIR/.chezmoiscripts/run_onchange_after_10-install-packages.sh.tmpl" >/dev/null 2>&1 \
+    && ok "tmpl: install-packages renders (Brewfile include resolves)" \
+    || bad "tmpl: install-packages render failed"
+  cfg="$(SAM_SETUP_NAME="Test User" SAM_SETUP_EMAIL="t@e.co" \
+    chezmoi execute-template --source="$DIR" --init < "$DIR/.chezmoi.toml.tmpl" 2>/dev/null)"
+  case "$cfg" in
+    *'name   = "Test User"'*) ok "tmpl: config renders + env-seeds identity (CI-friendly)" ;;
+    *) bad "tmpl: config render/env-seed failed" ;;
+  esac
+else
+  printf '  %s· chezmoi absent — template render checks skipped%s\n' "${GRN}" "${RST}"
+fi
+
 printf '\nTests: %s%d passed%s, %s%d failed%s\n' "$GRN" "$PASS" "$RST" "$([ "$FAIL" -gt 0 ] && echo "$RED" || echo "")" "$FAIL" "$RST"
 [ "$FAIL" -eq 0 ]

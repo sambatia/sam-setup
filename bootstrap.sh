@@ -26,8 +26,8 @@ star-setup will, on THIS Mac:
   · install the Brewfile tools/apps
   · generate an SSH key ONLY if you have none
   · back up (never silently overwrite) then replace:
-      ~/.zshrc  ~/.gitconfig  ~/.tmux.conf
-      ~/.config/nvim  ~/.config/mise  ~/.config/starship.toml
+      ~/.zshrc  ~/.zshenv  ~/.gitconfig  ~/.tmux.conf
+      ~/.config/{nvim,mise,starship.toml,ghostty}
 You'll be asked your name + email next. None of Sam's secrets are installed.
 EOF
   printf 'proceed? [y/N] '
@@ -62,7 +62,13 @@ ensure_clt() {
   xcode-select -p >/dev/null 2>&1 && return 0
   say "Installing Xcode Command Line Tools (a dialog may pop up — click Install)…"
   xcode-select --install >/dev/null 2>&1 || true
-  until xcode-select -p >/dev/null 2>&1; do sleep 5; done
+  # Bounded wait (~20 min) so a cancelled dialog doesn't hang forever.
+  local tries=0 max=240
+  until xcode-select -p >/dev/null 2>&1; do
+    tries=$((tries + 1))
+    [ "$tries" -ge "$max" ] && die "Command Line Tools not installed after ~20 min. Run 'xcode-select --install', finish it, then re-run."
+    sleep 5
+  done
   say "Command Line Tools ready."
 }
 

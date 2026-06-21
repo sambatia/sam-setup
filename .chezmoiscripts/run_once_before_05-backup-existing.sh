@@ -10,8 +10,9 @@ set -eu
 ts="$(date +%Y%m%d-%H%M%S)"
 backed=0
 for t in \
-  "$HOME/.zshrc" "$HOME/.gitconfig" "$HOME/.tmux.conf" \
-  "$HOME/.config/nvim" "$HOME/.config/mise" "$HOME/.config/starship.toml"; do
+  "$HOME/.zshrc" "$HOME/.zshenv" "$HOME/.gitconfig" "$HOME/.tmux.conf" \
+  "$HOME/.config/nvim" "$HOME/.config/mise" "$HOME/.config/starship.toml" \
+  "$HOME/.config/ghostty/config"; do
   # Only back up a real file/dir (a pre-existing one). chezmoi-managed files on a
   # re-install would be caught by run_once firing only on first apply anyway.
   if [ -e "$t" ] && [ ! -L "$t" ]; then

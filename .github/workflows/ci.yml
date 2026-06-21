@@ -24,6 +24,7 @@ jobs:
             tests/run-bootstrap-tests.sh \
             .chezmoiscripts/run_once_before_05-backup-existing.sh \
             .chezmoiscripts/run_after_20-ssh-key.sh \
+            .chezmoiscripts/run_once_after_30-tmux-tpm.sh \
             dot_local/bin/executable_sam-setup-restore
       - name: Secret scan (gitleaks)
         uses: gitleaks/gitleaks-action@v2
@@ -39,6 +40,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Install chezmoi (for template-render checks)
+        run: sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin" && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Run unit tests
         run: ./tests/run-bootstrap-tests.sh
 

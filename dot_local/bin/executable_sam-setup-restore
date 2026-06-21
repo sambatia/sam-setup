@@ -8,8 +8,9 @@ set -eu
 
 restored=0
 for base in \
-  "$HOME/.zshrc" "$HOME/.gitconfig" "$HOME/.tmux.conf" \
-  "$HOME/.config/nvim" "$HOME/.config/mise" "$HOME/.config/starship.toml"; do
+  "$HOME/.zshrc" "$HOME/.zshenv" "$HOME/.gitconfig" "$HOME/.tmux.conf" \
+  "$HOME/.config/nvim" "$HOME/.config/mise" "$HOME/.config/starship.toml" \
+  "$HOME/.config/ghostty/config"; do
   bak="$(ls -dt "$base".bak-* 2>/dev/null | head -1 || true)"
   [ -n "$bak" ] || continue
   rm -rf "$base"

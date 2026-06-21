@@ -1,0 +1,19 @@
+# Ghostty — terminal config (sam-setup).
+# Matches the Starship prompt: Catppuccin Mocha + a JetBrains Mono Nerd Font
+# (installed via the Brewfile). Override anything in ~/.config/ghostty/config.local.
+
+font-family = JetBrainsMono Nerd Font
+font-size = 14
+theme = catppuccin-mocha
+
+background-opacity = 0.96
+window-padding-x = 10
+window-padding-y = 10
+cursor-style = bar
+mouse-hide-while-typing = true
+copy-on-select = clipboard
+
+# Treat Option as Alt (so word-jumping etc. work) on macOS
+macos-option-as-alt = true
+
+config-file = ?config.local

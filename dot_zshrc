@@ -1,0 +1,72 @@
+# ~/.zshrc — shareable shell config (sam-setup).
+#
+# The shareable core of Sam's shell: Homebrew, Starship prompt, the zsh quality-
+# of-life plugins, modern CLI aliases, and tool init. NO secrets, NO machine- or
+# work-specific bits — those stay in YOUR ~/.zshrc.local (sourced at the bottom)
+# or, for secrets, the macOS Keychain (see the note near the end).
+
+# ── Homebrew ──────────────────────────────────────────────────────────────────
+export HOMEBREW_PREFIX="${HOMEBREW_PREFIX:-/opt/homebrew}"
+[[ -x "$HOMEBREW_PREFIX/bin/brew" ]] && eval "$("$HOMEBREW_PREFIX/bin/brew" shellenv)"
+
+# ── PATH ──────────────────────────────────────────────────────────────────────
+export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
+
+# ── Editor ────────────────────────────────────────────────────────────────────
+export EDITOR="nvim"
+export VISUAL="nvim"
+
+# ── Prompt: Starship ──────────────────────────────────────────────────────────
+command -v starship >/dev/null 2>&1 && eval "$(starship init zsh)"
+
+# ── Zsh quality-of-life plugins (installed via Homebrew) ──────────────────────
+for _p in zsh-autosuggestions/zsh-autosuggestions.zsh \
+          zsh-syntax-highlighting/zsh-syntax-highlighting.zsh; do
+  [[ -r "$HOMEBREW_PREFIX/share/$_p" ]] && source "$HOMEBREW_PREFIX/share/$_p"
+done
+unset _p
+
+# ── Aliases — modern CLI replacements ─────────────────────────────────────────
+command -v eza     >/dev/null 2>&1 && { alias ls='eza --icons'; alias ll='eza --icons -la'; alias la='eza --icons -a'; alias lt='eza --icons --tree'; }
+command -v bat     >/dev/null 2>&1 && alias cat='bat'
+command -v btop    >/dev/null 2>&1 && alias top='btop'
+command -v nvim    >/dev/null 2>&1 && alias vim='nvim'
+command -v lazygit >/dev/null 2>&1 && alias lg='lazygit'
+command -v gping   >/dev/null 2>&1 && alias ping='gping'
+
+# ── Aliases — git ─────────────────────────────────────────────────────────────
+alias gs='git status'
+alias ga='git add .'
+alias gc='git commit -m'
+alias gp='git push'
+alias gb='git branch'
+alias gd='git diff'
+alias gl='git log --oneline -10'
+
+# ── Aliases — python ──────────────────────────────────────────────────────────
+alias python='python3'
+
+# ── Yazi wrapper (cd to the dir you quit in) ──────────────────────────────────
+y() {
+  local tmp; tmp="$(mktemp -t yazi-cwd.XXXXXX)"
+  yazi "$@" --cwd-file="$tmp"
+  [[ -s "$tmp" ]] && cd "$(<"$tmp")"
+  rm -f "$tmp"
+}
+
+# ── Tool init (each guarded — only runs if the tool is installed) ─────────────
+command -v direnv >/dev/null 2>&1 && eval "$(direnv hook zsh)"
+[[ -f ~/.fzf.zsh ]] && source ~/.fzf.zsh
+command -v atuin  >/dev/null 2>&1 && eval "$(atuin init zsh)"
+command -v mise   >/dev/null 2>&1 && eval "$(mise activate zsh)"
+[[ -f "$HOME/.cargo/env" ]] && source "$HOME/.cargo/env"
+# zoxide stays last (it wraps `cd`)
+command -v zoxide >/dev/null 2>&1 && eval "$(zoxide init zsh --cmd cd)"
+
+# ── Secrets: macOS Keychain, never this file ──────────────────────────────────
+# Put API keys in the Keychain and read them at runtime, e.g.:
+#   export MY_API_KEY="$(security find-generic-password -a "$USER" -s MY_API_KEY -w 2>/dev/null)"
+# Never commit a secret into a dotfile.
+
+# ── Your machine-local overrides (gitignored, never shipped) ──────────────────
+[[ -f "$HOME/.zshrc.local" ]] && source "$HOME/.zshrc.local"

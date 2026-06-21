@@ -5,10 +5,6 @@
 [![Shell](https://img.shields.io/badge/bash-5.x-1f425f)]()
 [![License](https://img.shields.io/badge/license-MIT-green)]()
 
-> **Status: scaffolding.** The repo skeleton + pinned one-liner are in place; the
-> Brewfile, dotfile templates, and install scripts are being built out
-> (see [the task list](#build-status)).
-
 ## Install
 
 On a fresh Mac, paste this and walk away (you'll get one `[y/N]` consent prompt, then it asks your name + email):
@@ -31,8 +27,24 @@ Re-running is safe. Pull later changes with `chezmoi update` (run `chezmoi diff`
 
 ## What you get
 
-CLI tools (ripgrep, fzf, zoxide, …), the Neovim stack, a Nerd Font, the Starship
-prompt, and shell wiring. GUI apps come via the `Brewfile` casks.
+- **CLI tools** — ripgrep, fzf, zoxide, eza, bat, lazygit, btop, … (the `Brewfile`).
+- **Neovim** — the full Lazy.nvim stack.
+- **Shell** — zsh with the Starship prompt, autosuggestions + syntax highlighting,
+  modern aliases, and tool init (zoxide/atuin/direnv/mise/fzf).
+- **Terminal** — Ghostty, themed Catppuccin Mocha with a JetBrains Mono Nerd Font.
+- **tmux** — Ctrl-A prefix, mouse, Catppuccin (tpm auto-cloned; `prefix + I` to install).
+- **Git** — your identity (prompted), sensible defaults.
+
+## Customize (your machine, never shipped)
+
+Everything here is a sane shared baseline. Layer your own on top — these files are
+sourced if present and are **not** part of this repo:
+
+- `~/.zshrc.local` — your aliases, PATH tweaks, machine-specific bits.
+- `~/.config/ghostty/config.local` — terminal overrides.
+- **Secrets** go in the macOS Keychain, never a dotfile (see the note in `~/.zshrc`).
+
+Pull updates later with `chezmoi update` (run `chezmoi diff` first to preview).
 
 ## What stays yours / never shipped
 
@@ -45,11 +57,24 @@ public, shareable layer only.
 Existing configs are moved to `<path>.bak-<timestamp>` before replacement, so nothing
 is lost. A one-command `restore` is on the task list.
 
-## Build status
+## Development
 
-Tracked in the eng-review plan. Foundation (this skeleton + pinned one-liner) done;
-next up: Brewfile, chezmoi dotfile templates, the `brew bundle` + SSH-key run-scripts,
-unit tests, and CI smoke.
+```sh
+just            # list tasks
+just check      # shellcheck + unit tests (the pre-commit gate)
+just brewfile-refresh   # regenerate the Brewfile from your machine
+just preview    # chezmoi diff — what an update would change
+```
+
+## Releasing
+
+The install one-liner pins to a git tag, so changes only reach friends when you cut a release:
+
+```sh
+just release v0.2.0   # runs checks, tags, pushes, reminds you to bump the README line
+```
+
+Then update the `v0.X.Y` in the install command above. See `CHANGELOG.md`.
 
 ## License
 
