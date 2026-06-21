@@ -35,6 +35,27 @@ EOF
   case "$reply" in y|Y|yes|YES) return 0 ;; *) die "aborted — nothing was changed." ;; esac
 }
 
+# T13: macOS-only + a hard minimum version (Homebrew, casks, and fonts drop
+# support for old macOS). Bump MIN_MACOS as upstream requirements move.
+MIN_MACOS=13   # Ventura
+ensure_macos() {
+  [ "$(uname -s)" = "Darwin" ] || die "macOS only (this reproduces a Mac workstation)."
+  local major; major="$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)"
+  case "$major" in
+    ''|*[!0-9]*) say "could not read macOS version — continuing." ;;
+    *) [ "$major" -ge "$MIN_MACOS" ] || die "macOS $major is below the minimum (${MIN_MACOS}). Update first." ;;
+  esac
+}
+
+# T13: Apple Silicon may hit Intel-only casks. Install Rosetta 2 up front
+# (idempotent; best-effort — a couple of casks just won't run without it).
+ensure_rosetta() {
+  [ "$(uname -m)" = "arm64" ] || return 0
+  /usr/bin/pgrep -q oahd 2>/dev/null && return 0   # already installed
+  say "Installing Rosetta 2 (for any Intel-only apps)…"
+  softwareupdate --install-rosetta --agree-to-license >/dev/null 2>&1 || say "Rosetta install skipped (Intel-only casks may not run)."
+}
+
 # T2: Xcode Command Line Tools — required by Homebrew. Triggers a GUI dialog on a
 # factory Mac; wait for it (it provides git/cc) before continuing.
 ensure_clt() {
@@ -60,7 +81,9 @@ ensure_brew() {
 }
 
 main() {
+  ensure_macos
   consent
+  ensure_rosetta
   ensure_clt
   ensure_brew
   command -v chezmoi >/dev/null 2>&1 || { say "Installing chezmoi…"; brew install chezmoi || die "chezmoi install failed."; }
