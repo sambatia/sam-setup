@@ -68,15 +68,21 @@ brew "alajmo/mani/mani"
 
 # ── Data Processing, Networks, & APIs ─────────────────────────────────────────
 brew "jq"
+brew "jqp"
 brew "yq"
 brew "fx"
 brew "qsv"
+brew "visidata"
+brew "lazysql"
 brew "xh"
 brew "doggo"
 brew "posting"
 brew "pgcli"
 brew "nats-io/nats-tools/nats"
 brew "teamookla/speedtest/speedtest"
+
+# ── AI & LLM CLI Tooling ───────────────────────────────────────────────────────
+brew "llm"
 
 # ── Runtimes, Compilers, & Package Managers ───────────────────────────────────
 brew "mise"
@@ -136,6 +142,7 @@ cask "claude-code@latest"
 cask "orbstack"
 cask "tableplus"
 cask "bruno"
+cask "mitmproxy"
 cask "1password-cli"
 cask "yoanwai/tap/agent-manager"
 
