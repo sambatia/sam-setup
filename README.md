@@ -46,6 +46,7 @@
 - [Local Customization & Extension Points](#-local-customization--extension-points)
 - [Security, Privacy, & Zero-Credential Policy](#-security-privacy--zero-credential-policy)
 - [Rollback & Uninstallation](#-rollback--uninstallation)
+- [Complete Shipped Custom Commands Index](#-complete-shipped-custom-commands-index)
 - [License](#-license)
 
 ---
@@ -566,6 +567,102 @@ sam-setup-restore
 ```
 
 The restore script finds your pre-installation `.bak-<timestamp>` archives and restores `~/.zshrc`, `~/.tmux.conf`, `~/.config/nvim`, and other dotfiles back to their exact original states.
+
+---
+
+## 📑 Complete Shipped Custom Commands Index
+
+As a final quick recap, here is the complete catalog of custom binaries, orchestrators, workflow functions, and productivity aliases installed out-of-the-box by `sam-setup`:
+
+### 1. Workstation Lifecycle, Diagnostics, & Maintenance (in `~/.local/bin`)
+
+| Command | Category | Description & Usage |
+| :--- | :--- | :--- |
+| **`sam-setup-check`** | Health Suite | **53-point automated health check.** Non-destructively verifies macOS architecture, Homebrew, mise, uv, AI coding agents (Claude, Codex, AGY), TUIs (Superfile, TUIOS, Btop), Yazi plugins (12 active), Neovim specs, runtimes, fonts, and Zsh syntax. |
+| **`sam-setup-doctor`** | Self-Healing Repair | Automatically repairs environment drift: re-shims `mise`, clones missing TPM plugins, refreshes Herdr agent integrations, and syncs Yazi packages (`sam-setup-doctor` or `sam-setup-check --fix`). |
+| **`sam-setup-help`** | Interactive Guide | Displays the full terminal quick-reference card and keybindings for Tmux, Ghostty, Neovim, Herdr, and modern CLIs directly in your terminal. |
+| **`sam-setup-update`** | One-Pass Updater | Executes coordinated updates across Homebrew, Mise runtimes, standalone Python tools (`uv tool upgrade --all`), LazyVim plugins, Yazi packages, and dotfiles. |
+| **`sam-setup-restore`**| Rollback & Undo | Finds pre-installation `.bak-<timestamp>` archives and restores `~/.zshrc`, `~/.tmux.conf`, and `~/.config/nvim` back to their exact original pre-install state. |
+| **`update-all`** | Master Orchestrator | Autonomous maintenance engine that coordinates updates across 7 package managers with strict safety checks. |
+| **`repo-audit`** | Git Diagnostic | Read-only repository audit tool verifying Git status, remotes, branches, and untracked files across project trees. |
+| **`fleet-lint`** | Fleet Conformance | Lints repository conformance and checks configuration alignment across local repositories. |
+| **`net-health`** | Network Probe | High-speed diagnostic script probing VPN status, DNS resolution, and network latency. |
+
+---
+
+### 2. Multiplexer, Pane, & Session Orchestration
+
+| Command | Implementation | Description & Usage |
+| :--- | :--- | :--- |
+| **`refresh`** | Shell function & binary | Inspects every active Herdr pane. If a pane is idle (not running an editor, server, or active agent), it clears the screen and reloads a fresh shell safely, preserving your active command history and background jobs. |
+| **`refresh-dry`** | Shell function | Dry-run preview of `refresh` that reports which panes would be refreshed and explains why busy panes would be skipped. |
+| **`refresh-doctor`** | Executable CLI | Diagnoses Herdr multiplexer health, protocol version compatibility, IPC sockets, and logs failure reports. |
+| **`clear-panes`** | Shell function | Clears scrollback across all Herdr panes simultaneously without reloading or interrupting the underlying shells. |
+| **`clear-panes-dry`**| Shell function | Dry-run preview of `clear-panes`. |
+| **`zsh-refresh-current`**| Executable CLI | Safely replaces the invoking shell with a clean shell instance without dropping terminal environment variables. |
+
+---
+
+### 3. Interactive Workflow Functions & Wrappers
+
+| Command | Implementation | Description & Usage |
+| :--- | :--- | :--- |
+| **`y`** | Shell wrapper | Launches **Yazi** file manager. When you exit with `q`, the wrapper automatically executes `cd` in your parent shell so you land exactly where you browsed. |
+| **`chrome-debug`** | Shell function | Launches Google Chrome with `--remote-debugging-port=9222` and an isolated profile at `~/.chrome-debug-profile` for headless testing via Playwright or Chrome DevTools MCP. |
+| **`pathcheck`** | Shell function | Prints a clean, numbered listing of every entry in `$PATH` and highlights duplicate PATH components. |
+| **`tview`** | Shell function | Runs an isolated full-screen TUI data viewer inside Textual's dedicated `uv` environment (`textual-dev`), preventing Python dependency pollution. |
+| **`remote-on`** | Shell function | Enables remote access hold (`caffeinate -i`). Keeps your Mac reachable over SSH/Tailscale on battery without modifying system power settings. Display sleeps normally. |
+| **`remote-off`** | Shell function | Terminates the remote access hold and restores standard macOS battery idle-sleep. |
+| **`remote-status`** | Shell function | Reports whether remote access caffeination is active and displays current battery power source. |
+
+---
+
+### 4. Curated Listing, Navigation, & Productivity Aliases
+
+#### File Exploration (`eza` Suite)
+* **`lhelp`**: Interactive built-in cheatsheet that explains all 20 `eza` listing aliases.
+* **`l`**: Compact single-column listing (`eza --oneline`).
+* **`ll`**: Premium long listing with Git status, icons, and relative timestamps (`eza -lah --git`).
+* **`la` / `lla`**: All files including hidden dotfiles (`eza --all`).
+* **`lfull`**: Maximum detail including extended file attributes and Unix permissions.
+* **`lt` / `ltt`**: 2-level and 3-level directory tree view (`eza --tree`).
+* **`ltl`**: Detailed tree view with full metadata.
+* **`ld` / `ltd`**: List directories only (or tree of directories only).
+* **`lg`**: Git-aware detailed listing.
+* **`lgt`**: Git-aware tree respecting `.gitignore`.
+* **`lrepo`**: Highlights Git repository roots.
+* **`lnew` / `lold`**: Sort by newest / oldest modified timestamp.
+* **`lsize` / `ldu`**: Sort by file size / recursive directory size calculation.
+* **`lext` / `lf`**: Sort by file extension / files only.
+
+#### Agent & Multiplexer Shortcuts (`herdr`)
+* **`h`**: Shortcut for `herdr`.
+* **`hs`**: List active sessions (`herdr session list`).
+* **`ha`**: Attach to an existing session (`herdr session attach`).
+* **`hrl`**: Reload Herdr server configuration (`herdr server reload-config`).
+* **`hst`**: Stop Herdr server (`herdr server stop`).
+* **`hup`**: Check/run Herdr updates (`herdr update`).
+* **`hint`**: Inspect agent integration status (`herdr integration status`).
+* **`hag`**: List registered agents (`herdr agent list`).
+
+#### Modern Coreutils Overrides (TTY-Guarded)
+* **`cat`** $\rightarrow$ `bat` (syntax-highlighted cat).
+* **`top`** $\rightarrow$ `btop` (Catppuccin Mocha resource monitor).
+* **`lg`** $\rightarrow$ `lazygit` (interactive Git TUI).
+* **`ping`** $\rightarrow$ `gping` (visual graphical ping over time).
+* **`vim`** $\rightarrow$ `nvim`.
+* **`view`**: Opens `bat` in pager mode (`bat --paging=always`).
+* **`batp`**: Plain `bat` without line numbers or decoration.
+* **`du1` / `du2`**: `dust -d 1` / `dust -d 2` (shallow directory size trees).
+* **`dfp`**: Modern disk usage via `duf`.
+* **`md`**: Markdown terminal preview via `glow --pager`.
+* **`pls` / `pcat`**: Escape aliases to bypass `eza`/`bat` and run standard Unix `ls` and `cat`.
+
+#### Task & Todo Management (`tuxedo`)
+* **`tx`**: Opens interactive `todo.txt` task manager TUI (`tuxedo "$TODO_FILE"`).
+* **`txw`**: Opens workspace-scoped task manager (`tuxedo-workspaces "$TODO_FILE"`).
+* **`todo-ui`**: Alias for `tx`.
+* **`todo-file`**: Opens `todo.txt` directly in Neovim.
 
 ---
 
