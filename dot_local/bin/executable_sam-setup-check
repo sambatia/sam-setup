@@ -1,29 +1,52 @@
 #!/usr/bin/env bash
 #
-# sam-setup-check — read-only workstation replication health verification.
+# sam-setup-check — workstation replication health verification & self-healing doctor.
 #
 # Verifies that packages, runtimes, shell configurations, multiplexers,
-# and fonts have been installed cleanly and correctly.
+# and fonts have been installed cleanly and correctly. Supports --fix
+# to automatically remediate missing plugins or shims.
 #
 # Usage:
 #   sam-setup-check
+#   sam-setup-check --fix
 #   sam-setup-check --help
+#
 
 set -u
 
+FIX_MODE=0
+for arg in "$@"; do
+  case "$arg" in
+    --fix|-f) FIX_MODE=1 ;;
+    -h|--help)
+      cat <<'EOF'
+sam-setup-check — workstation replication health verification & self-healing doctor.
+
+Usage:
+  sam-setup-check          Run read-only health checks
+  sam-setup-check --fix    Attempt automated safe fixes for missing plugins or shims
+  sam-setup-check --help   Show this help
+EOF
+      exit 0
+      ;;
+  esac
+done
+
 if [ -t 1 ]; then
-  C_G=$'\033[32m'; C_Y=$'\033[33m'; C_R=$'\033[31m'; C_B=$'\033[1m'; C_RST=$'\033[0m'
+  C_G=$'\033[32m'; C_Y=$'\033[33m'; C_R=$'\033[31m'; C_B=$'\033[1m'; C_C=$'\033[36m'; C_RST=$'\033[0m'
 else
-  C_G=""; C_Y=""; C_R=""; C_B=""; C_RST=""
+  C_G=""; C_Y=""; C_R=""; C_B=""; C_C=""; C_RST=""
 fi
 
 PASS=0
 WARN=0
 FAIL=0
+FIXES=0
 
-pass() { PASS=$((PASS + 1)); printf '  %s✓%s %s\n' "$C_G" "$C_RST" "$1"; }
-warn() { WARN=$((WARN + 1)); printf '  %s!%s %s\n' "$C_Y" "$C_RST" "$1"; }
-fail() { FAIL=$((FAIL + 1)); printf '  %s✗%s %s\n' "$C_R" "$C_RST" "$1"; }
+pass()  { PASS=$((PASS + 1)); printf '  %s✓%s %s\n' "$C_G" "$C_RST" "$1"; }
+warn()  { WARN=$((WARN + 1)); printf '  %s!%s %s\n' "$C_Y" "$C_RST" "$1"; }
+fail()  { FAIL=$((FAIL + 1)); printf '  %s✗%s %s\n' "$C_R" "$C_RST" "$1"; }
+fixed() { FIXES=$((FIXES + 1)); printf '  %s🔧 Fixed:%s %s\n' "$C_C" "$C_RST" "$1"; }
 
 printf '\n%s🔍 Workstation Health Check (sam-setup)%s\n\n' "$C_B" "$C_RST"
 
@@ -50,7 +73,7 @@ for pm in brew mise uv; do
 done
 
 # 3. Core Shell & Modern Utilities
-REQUIRED_TOOLS="zsh git tmux herdr nvim starship zoxide atuin eza bat rg fd fzf lazygit btop yazi spf just gh llm jqp vd lazysql mitmproxy kondo sam-setup-help"
+REQUIRED_TOOLS="zsh git tmux herdr nvim starship zoxide atuin eza bat rg fd fzf lazygit btop yazi spf just gh llm jqp vd lazysql mitmproxy kondo sam-setup-help sam-setup-doctor sam-setup-update"
 for tool in $REQUIRED_TOOLS; do
   if command -v "$tool" >/dev/null 2>&1; then
     pass "CLI utility: $tool is ready"
@@ -69,7 +92,11 @@ fi
 if command -v pnpm >/dev/null 2>&1; then
   pass "pnpm package manager: $(pnpm --version 2>/dev/null)"
 else
-  warn "pnpm is missing (install via: mise use -g pnpm)"
+  if [ "$FIX_MODE" -eq 1 ] && command -v mise >/dev/null 2>&1; then
+    mise use -g pnpm@latest >/dev/null 2>&1 && fixed "Installed pnpm via mise" || warn "pnpm installation failed"
+  else
+    warn "pnpm is missing (install via: mise use -g pnpm)"
+  fi
 fi
 
 if command -v python3 >/dev/null 2>&1; then
@@ -115,13 +142,35 @@ fi
 if [ -d "$HOME/.tmux/plugins/tpm" ]; then
   pass "Tmux Plugin Manager (TPM) is installed"
 else
-  warn "TPM directory missing at ~/.tmux/plugins/tpm"
+  if [ "$FIX_MODE" -eq 1 ]; then
+    git clone https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm" >/dev/null 2>&1 \
+      && [ -x "$HOME/.tmux/plugins/tpm/bin/install_plugins" ] \
+      && "$HOME/.tmux/plugins/tpm/bin/install_plugins" >/dev/null 2>&1 \
+      && fixed "Cloned TPM and installed Tmux plugins" || warn "TPM auto-fix failed"
+  else
+    warn "TPM directory missing at ~/.tmux/plugins/tpm (run: sam-setup-check --fix)"
+  fi
 fi
 
 if [ -f "$HOME/.config/herdr/config.toml" ]; then
   pass "Herdr multi-agent multiplexer configuration is present"
+  if [ "$FIX_MODE" -eq 1 ] && command -v herdr >/dev/null 2>&1; then
+    for integ in claude codex omp cursor opencode; do
+      herdr integration install "$integ" >/dev/null 2>&1 || true
+    done
+    fixed "Refreshed Herdr integrations"
+  fi
 else
   warn "Herdr config missing at ~/.config/herdr/config.toml"
+fi
+
+# 9. Shims self-healing
+if [ "$FIX_MODE" -eq 1 ] && command -v mise >/dev/null 2>&1; then
+  mise reshim >/dev/null 2>&1 && fixed "Mise shims reshimmed cleanly"
+fi
+
+if [ "$FIXES" -gt 0 ]; then
+  printf '\n%s✨ Applied %d automatic fix(es).%s\n' "$C_C" "$FIXES" "$C_RST"
 fi
 
 printf '\n%sSummary: %s%d PASS%s · %s%d WARN%s · %s%d FAIL%s\n\n' \

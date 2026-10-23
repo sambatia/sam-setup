@@ -55,9 +55,16 @@ sh -c "$(curl -fsSL https://raw.githubusercontent.com/sambatia/sam-setup/main/bo
 ### 🔄 One-Command Updates
 Whenever you want to update your entire environment, simply run:
 ```sh
-update-all
+update-all    # or: sam-setup-update
 ```
 This updates Homebrew, mise runtimes, global Node CLIs, uv tools, Neovim plugins, Tmux plugins, and dotfiles in a single coordinated, safe pass.
+
+### 🩺 Self-Healing Diagnostics & Doctor
+To verify your environment's health or automatically remediate drift:
+```sh
+sam-setup-check     # read-only 44-point health verification
+sam-setup-doctor    # automatic safe self-healing (reshim mise, fix TPM plugins, refresh integrations)
+```
 
 ### 📖 Built-In Cheatsheet & Quick Reference
 Whenever you want to recall keyboard shortcuts, aliases, or navigation commands, run:

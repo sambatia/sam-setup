@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#
+# sam-setup-doctor — automated workstation diagnostic & self-healing doctor.
+#
+# Usage:
+#   sam-setup-doctor
+#
+
+exec sam-setup-check --fix "$@"

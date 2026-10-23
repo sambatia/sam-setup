@@ -2,9 +2,10 @@
      Interactive (a real terminal): prompt for name/email/genKey once.
      Non-interactive (CI, scripted): take SAM_SETUP_NAME / SAM_SETUP_EMAIL from the
      environment and default genKey=true. Never commits secrets. */}}
-{{- $name   := env "SAM_SETUP_NAME" -}}
-{{- $email  := env "SAM_SETUP_EMAIL" -}}
-{{- $genKey := true -}}
+{{- $name    := env "SAM_SETUP_NAME" -}}
+{{- $email   := env "SAM_SETUP_EMAIL" -}}
+{{- $profile := env "SAM_SETUP_PROFILE" | default "full" -}}
+{{- $genKey  := true -}}
 {{- if stdinIsATTY -}}
 {{-   $name   = or $name  (promptStringOnce . "name"  "Your full name (for git commits)") -}}
 {{-   $email  = or $email (promptStringOnce . "email" "Your git email") -}}
@@ -14,4 +15,5 @@
 [data]
     name   = {{ $name   | quote }}
     email  = {{ $email  | quote }}
+    profile = {{ $profile | quote }}
     genKey = {{ $genKey }}

@@ -27,7 +27,9 @@ jobs:
             .chezmoiscripts/run_once_after_30-tmux-tpm.sh \
             dot_local/bin/executable_sam-setup-restore \
             dot_local/bin/executable_sam-setup-check \
+            dot_local/bin/executable_sam-setup-doctor \
             dot_local/bin/executable_sam-setup-help \
+            dot_local/bin/executable_sam-setup-update \
             dot_local/bin/executable_update-all
       - name: Secret scan (gitleaks)
         # Direct CLI (not gitleaks-action) — the action builds a <root>^..HEAD

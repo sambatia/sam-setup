@@ -22,6 +22,30 @@ if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
 set -euo pipefail
 
 REPO="${SAM_SETUP_REPO:-sambatia/sam-setup}"
+PROFILE="${SAM_SETUP_PROFILE:-full}"
+for a in "${@:-}"; do
+  case "$a" in
+    --core)      PROFILE="core" ;;
+    --full)      PROFILE="full" ;;
+    --yes|-y)    export SAM_SETUP_YES=1 ;;
+    -h|--help)
+      cat <<'EOF'
+bootstrap.sh — zero-friction, one-line workstation setup for macOS.
+
+Usage:
+  bootstrap.sh [options]
+
+Options:
+  --full       Install full workstation stack (default: cloud, k8s, AI agents, databases, dev runtimes)
+  --core       Install core terminal stack only (shell, Ghostty, LazyVim, multiplexers, modern CLIs)
+  --yes, -y    Skip upfront confirmation prompt
+  --help, -h   Show this help
+EOF
+      exit 0
+      ;;
+  esac
+done
+export SAM_SETUP_PROFILE="$PROFILE"
 
 if [ -t 1 ]; then
   C_B=$'\033[1m'; C_G=$'\033[32m'; C_Y=$'\033[33m'; C_M=$'\033[35m'; C_C=$'\033[36m'; C_R=$'\033[31m'; C_D=$'\033[2m'; C_RST=$'\033[0m'

@@ -13,8 +13,17 @@ set -eu
 command -v brew >/dev/null 2>&1 || { echo "brew missing — skipping bundle"; exit 0; }
 eval "$(brew shellenv)" 2>/dev/null || true
 
-echo "Installing packages from the Brewfile (this is the long part — go get coffee)…"
-brew bundle --no-lock --file=/dev/stdin <<'BREWFILE'
+{{- $profile := "full" -}}
+{{- if hasKey . "profile" -}}{{- $profile = .profile -}}{{- end -}}
+echo "Installing packages from the Brewfile (profile: {{ $profile }})…"
+if [ "{{ $profile }}" = "core" ]; then
+  echo "Core profile active: installing terminal, editor, and runtime tools (skipping heavy cloud/k8s casks)…"
+  grep -vE '("argocd"|"k9s"|"kubeconform"|"kubectx"|"stern"|"cosign"|"crane"|"dagger/tap/dagger"|"opentofu"|"awscli"|"aquasecurity/trivy/trivy"|"orbstack"|"tableplus")' <<'BREWFILE' | brew bundle --no-lock --file=/dev/stdin
 {{ include "Brewfile" }}
 BREWFILE
+else
+  brew bundle --no-lock --file=/dev/stdin <<'BREWFILE'
+{{ include "Brewfile" }}
+BREWFILE
+fi
 echo "✓ packages installed."

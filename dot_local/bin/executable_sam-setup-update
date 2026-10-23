@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#
+# sam-setup-update — update all packages, runtimes, plugins, and dotfiles.
+#
+# Usage:
+#   sam-setup-update
+#   sam-setup-update --check
+#
+
+exec update-all "$@"
