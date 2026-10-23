@@ -60,6 +60,8 @@ EOF
 
 # ── Compatibility Checks ─────────────────────────────────────────────────────
 MIN_MACOS=13
+MIN_DISK_GB=10
+
 ensure_macos() {
   [ "$(uname -s)" = "Darwin" ] || die "This setup script targets macOS only."
   local major
@@ -68,6 +70,44 @@ ensure_macos() {
     ''|*[!0-9]*) say "Could not determine exact macOS version — continuing." ;;
     *) [ "$major" -ge "$MIN_MACOS" ] || die "macOS $major is below minimum required (${MIN_MACOS}). Please update first." ;;
   esac
+}
+
+ensure_disk_space() {
+  local free_gb
+  free_gb="$(df -g /System/Volumes/Data 2>/dev/null | awk 'NR==2 {print $4}')" || free_gb="$(df -g / 2>/dev/null | awk 'NR==2 {print $4}')" || return 0
+  case "$free_gb" in
+    ''|*[!0-9]*) return 0 ;;
+    *)
+      if [ "$free_gb" -lt "$MIN_DISK_GB" ]; then
+        die "Insufficient disk space: ${free_gb} GB available. At least ${MIN_DISK_GB} GB is required for tools and runtimes."
+      fi
+      ok "Disk space: ${free_gb} GB available"
+      ;;
+  esac
+}
+
+ensure_power() {
+  command -v pmset >/dev/null 2>&1 || return 0
+  if pmset -g batt 2>/dev/null | grep -q "Battery Power"; then
+    local pct
+    pct="$(pmset -g batt 2>/dev/null | grep -o '[0-9]\+%' | head -1 | tr -d '%')"
+    case "$pct" in
+      ''|*[!0-9]*) ;;
+      *)
+        if [ "$pct" -lt 30 ]; then
+          warn "Running on battery (${pct}%). Please connect AC power to prevent Mac sleep during setup."
+        fi
+        ;;
+    esac
+  fi
+}
+
+keep_sudo_alive() {
+  if sudo -n true 2>/dev/null; then
+    while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
+    local sudo_pid=$!
+    trap 'kill '"$sudo_pid"' 2>/dev/null || true' EXIT
+  fi
 }
 
 ensure_rosetta() {
@@ -110,6 +150,9 @@ main() {
   printf '\n%s🚀 Starting Workstation Bootstrap%s\n\n' "$C_B" "$C_RST"
   ensure_macos
   consent
+  ensure_disk_space
+  ensure_power
+  keep_sudo_alive
   ensure_rosetta
   ensure_clt
   ensure_brew
@@ -176,9 +219,20 @@ main() {
   printf '  3. Sign in to your AI coding agents:\n'
   printf '     %sclaude login%s\n' "$C_C" "$C_RST"
   printf '     %scodex%s\n' "$C_C" "$C_RST"
-  printf '  4. To update your entire system in the future, simply run:\n'
+  printf '  4. View your full terminal cheatsheet anytime:\n'
+  printf '     %ssam-setup-help%s\n' "$C_C" "$C_RST"
+  printf '  5. To update your entire system in the future, simply run:\n'
   printf '     %supdate-all%s\n\n' "$C_C" "$C_RST"
   printf 'To undo or rollback these changes at any time, run: %ssam-setup-restore%s\n\n' "$C_D" "$C_RST"
+
+  if [ -d "/Applications/Ghostty.app" ] && [ -t 0 ] && [ "${SAM_SETUP_YES:-0}" != "1" ]; then
+    printf 'Launch Ghostty now to experience your new terminal? [Y/n] '
+    read -r launch_ghostty
+    case "$launch_ghostty" in
+      n|N|no|NO) ;;
+      *) open -a Ghostty ;;
+    esac
+  fi
 }
 
 if [ "${BASH_SOURCE[0]:-$0}" = "${0}" ]; then main "$@"; fi

@@ -59,6 +59,13 @@ update-all
 ```
 This updates Homebrew, mise runtimes, global Node CLIs, uv tools, Neovim plugins, Tmux plugins, and dotfiles in a single coordinated, safe pass.
 
+### 📖 Built-In Cheatsheet & Quick Reference
+Whenever you want to recall keyboard shortcuts, aliases, or navigation commands, run:
+```sh
+sam-setup-help
+```
+This prints an interactive quick-reference card covering Tmux prefixes (`Ctrl-a`), splits, Neovim smart-splits (`Ctrl-h/j/k/l`), modern CLI commands, and AI tools.
+
 ---
 
 ## 🔒 Security & Privacy (What Stays Yours)

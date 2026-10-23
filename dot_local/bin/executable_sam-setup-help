@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+#
+# sam-setup-help — interactive cheatsheet and quick-reference guide.
+#
+# Usage:
+#   sam-setup-help
+#
+
+set -u
+
+if [ -t 1 ]; then
+  C_B=$'\033[1m'
+  C_G=$'\033[32m'
+  C_Y=$'\033[33m'
+  C_C=$'\033[36m'
+  C_M=$'\033[35m'
+  C_D=$'\033[2m'
+  C_RST=$'\033[0m'
+else
+  C_B=""; C_G=""; C_Y=""; C_C=""; C_M=""; C_D=""; C_RST=""
+fi
+
+cat <<EOF
+
+${C_B}⚡ SAM-SETUP TERMINAL CHEATSHEET & QUICK REFERENCE${C_RST}
+${C_D}Everything you need to master your new terminal environment.${C_RST}
+
+${C_M}━━━ 1. TERMINAL & MULTIPLEXING ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RST}
+  ${C_C}Tmux Prefix:${C_RST}       ${C_B}Ctrl + a${C_RST} (sensible prefix)
+  ${C_C}Splits:${C_RST}            ${C_B}prefix + |${C_RST} (vertical)  ·  ${C_B}prefix + -${C_RST} (horizontal)
+  ${C_C}Seamless Nav:${C_RST}      ${C_B}Ctrl + h / j / k / l${C_RST} (smart-splits across Tmux, Neovim, & Herdr)
+  ${C_C}Mouse Toggle:${C_RST}      ${C_B}prefix + m${C_RST} (toggle mouse selection/scrolling)
+  ${C_C}Session Restore:${C_RST}   ${C_B}prefix + Ctrl-s${C_RST} (save session)  ·  ${C_B}prefix + Ctrl-r${C_RST} (restore session)
+  ${C_C}Ghostty Terminal:${C_RST}  ${C_B}Cmd + t${C_RST} (new native tab)  ·  ${C_B}Cmd + d${C_RST} (split right)  ·  ${C_B}Cmd + Shift + d${C_RST} (split down)
+  ${C_C}Herdr Multiplexer:${C_RST} ${C_B}herdr${C_RST} (agentic orchestrator with topic sync)
+
+${C_M}━━━ 2. MODERN CLI REPLACEMENTS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RST}
+  ${C_C}eza${C_RST} (modern ls):     ${C_B}l${C_RST} (list)  ·  ${C_B}ll${C_RST} (details)  ·  ${C_B}lt${C_RST} (tree view)
+  ${C_C}bat${C_RST} (modern cat):    ${C_B}bat <file>${C_RST} (syntax highlighted + line numbers)
+  ${C_C}ripgrep${C_RST} (fast grep):  ${C_B}rg "<pattern>"${C_RST} (blazingly fast recursive search)
+  ${C_C}fd${C_RST} (modern find):    ${C_B}fd <filename>${C_RST} (instant file finder)
+  ${C_C}zoxide${C_RST} (smart cd):   ${C_B}z <dirname>${C_RST} (jump to frequently visited directory)
+  ${C_C}atuin${C_RST} (shell history): ${C_B}Ctrl + r${C_RST} or ${C_B}Up Arrow${C_RST} (rich fuzzy history search)
+  ${C_C}fzf${C_RST} (fuzzy finder):   ${C_B}Ctrl + t${C_RST} (files)  ·  ${C_B}Alt + c${C_RST} (directory cd)
+
+${C_M}━━━ 3. POWER TUIS & TOOLS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RST}
+  ${C_C}Git:${C_RST}               ${C_B}lg${C_RST} (lazygit)  ·  ${C_B}gh dash${C_RST} (GitHub PR/Issue dashboard)
+  ${C_C}Docker:${C_RST}            ${C_B}ld${C_RST} (lazydocker)  ·  ${C_B}dive <image>${C_RST} (explore image layers)
+  ${C_C}Files:${C_RST}             ${C_B}yazi${C_RST} (graphical file manager)  ·  ${C_B}spf${C_RST} (superfile)
+  ${C_C}System:${C_RST}            ${C_B}btop${C_RST} (resource monitor)  ·  ${C_B}dust${C_RST} (disk usage tree)
+  ${C_C}Data & APIs:${C_RST}       ${C_B}vd <file>${C_RST} (visidata tabular wrangler)  ·  ${C_B}jqp${C_RST} (jq playground)
+                     ${C_B}posting${C_RST} (TUI REST client)  ·  ${C_B}lazysql${C_RST} (database client)
+  ${C_C}Disk Cleanup:${C_RST}      ${C_B}kondo -n${C_RST} (dry-run clean stale node_modules/target/venv)
+  ${C_C}Network:${C_RST}           ${C_B}trip <host>${C_RST} (Trippy interactive network path & ping tracer)
+
+${C_M}━━━ 4. AI & DEVELOPER ASSISTANTS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RST}
+  ${C_C}Claude Code:${C_RST}       ${C_B}claude${C_RST} (agentic engineering assistant)
+  ${C_C}Codex CLI:${C_RST}         ${C_B}codex${C_RST} (OpenAI terminal coding agent)
+  ${C_C}CLI LLM Filter:${C_RST}    ${C_B}cat error.log | llm "explain this failure"${C_RST} (pipes to local/cloud LLMs)
+
+${C_M}━━━ 5. LOCAL CUSTOMIZATION & UPDATES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RST}
+  ${C_C}Custom Aliases:${C_RST}    Put personal aliases/env vars in: ${C_Y}~/.zshrc.local${C_RST}
+  ${C_C}Ghostty Tweaks:${C_RST}    Put custom font/dimension overrides in: ${C_Y}~/.config/ghostty/config.local${C_RST}
+  ${C_C}Update Everything:${C_RST} Run ${C_G}update-all${C_RST} (coordinates Homebrew, mise, uv, Neovim, & dotfiles)
+  ${C_C}Verify Health:${C_RST}     Run ${C_G}sam-setup-check${C_RST} (41-point diagnostic check)
+  ${C_C}Rollback Changes:${C_RST}  Run ${C_G}sam-setup-restore${C_RST} (reverts dotfiles to pre-install backups)
+
+EOF
