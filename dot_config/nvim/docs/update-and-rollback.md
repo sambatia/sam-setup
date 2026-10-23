@@ -163,7 +163,7 @@ The first copy preserves the failed lockfile for diagnosis.
 The pre-upgrade backup is:
 
 ```text
-/Users/sam/.config/nvim.backup.20260725-023926
+~/.config/nvim.bak-<timestamp>
 ```
 
 Prefer Git recovery when only tracked Neovim files need restoration. The
@@ -175,7 +175,7 @@ and restore the backup as a standalone directory:
 
 ```bash
 mv ~/.config/nvim ~/.config/nvim.failed.$(date +%Y%m%d-%H%M%S)
-cp -a /Users/sam/.config/nvim.backup.20260725-023926 ~/.config/nvim
+cp -a ~/.config/nvim.bak-<timestamp> ~/.config/nvim
 nvim --headless "+Lazy! sync" +qa
 nvim --headless +qa
 ```

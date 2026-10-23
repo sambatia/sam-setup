@@ -47,7 +47,7 @@ See [Keymaps](keymaps.md) and `sh tests/review-runtime.sh`.
 The live config was already a LazyVim setup and a symlink into a larger,
 partially dirty repository. Unrelated repository changes were preserved. A
 full timestamped copy was made at
-`/Users/sam/.config/nvim.backup.20260725-023926`, and Neovim-only baseline
+`~/.config/nvim.bak-<timestamp>`, and Neovim-only baseline
 state was committed before implementation.
 
 Important initial findings:

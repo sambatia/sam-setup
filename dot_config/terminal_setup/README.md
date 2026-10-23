@@ -306,7 +306,7 @@ The 2026-08-01 module hardening reconciled the former `.zshrc` and `.zshenv`
 source drift. Continue to use explicit target lists: preview every startup,
 loader, manifest, module, and worker target together before applying a module
 inventory change. This installation's original refresh rollback record is
-`/Users/sam/.local/state/terminal_setup/refresh-backup-20260723.PwHTWi/ROLLBACK.md`.
+`~/.local/state/terminal_setup/refresh-backup/ROLLBACK.md`.
 Restore reviewed source versions and start a fresh shell; never restore removed
 plaintext credential copies. Existing redacted failure records are bounded
 inert state and may be retained or separately moved to Trash.

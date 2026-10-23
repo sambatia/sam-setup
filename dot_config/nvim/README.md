@@ -5,11 +5,10 @@ LazyVim, Snacks, Telescope, blink.cmp, Noice, Oil, Gitsigns, LazyGit,
 render-markdown, table-nvim, and CodeCompanion as the core experience, then
 adds focused tools only where they provide a distinct workflow.
 
-The live path, `~/.config/nvim`, is a symlink to this directory in the
-`star-setup` repository. The complete pre-upgrade backup is:
+The live path is `~/.config/nvim`. A pre-upgrade backup is created at:
 
 ```text
-/Users/sam/.config/nvim.backup.20260725-023926
+~/.config/nvim.bak-<timestamp>
 ```
 
 ## Architecture
