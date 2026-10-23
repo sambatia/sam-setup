@@ -1,9 +1,9 @@
 # 🚀 sam-setup
 
-> **One line, walk away, come back to a Mac that works like mine** — an identical, zero-friction replica of an elite developer terminal environment: Ghostty, Neovim (LazyVim), Herdr agent multiplexer, Tmux, Starship, Atuin, modern CLI utilities, data wranglers, AI coding agents, and polyglot runtimes. Your identity stays yours; none of my secrets or private history come along.
+> **One line, walk away, come back to a Mac that works like mine** — an identical, zero-friction, production-grade replica of an elite developer terminal environment: Ghostty, Neovim (LazyVim with 30+ plugins), Herdr multi-agent multiplexer, Tmux, Starship, Atuin, modern CLI replacements, terminal file managers (Yazi with 12 plugins, Superfile, TUIOS), system monitors (Btop), AI coding agents (Claude Code, OpenAI Codex CLI, AGY / Antigravity CLI, llm), and polyglot runtimes. Your identity stays yours; none of my secrets or private history come along.
 
 <p align="center">
-  <a href="https://github.com/sambatia/sam-setup/releases"><img src="https://img.shields.io/badge/release-v0.2.0-blue.svg?style=for-the-badge&logo=git" alt="Release v0.2.0"></a>
+  <a href="https://github.com/sambatia/sam-setup/releases"><img src="https://img.shields.io/badge/release-v0.2.1-blue.svg?style=for-the-badge&logo=git" alt="Release v0.2.1"></a>
   <a href="https://www.apple.com/macos/"><img src="https://img.shields.io/badge/macOS-Tahoe%20%7C%20Sonoma%20%7C%20Sequoia-000000.svg?style=for-the-badge&logo=apple" alt="macOS"></a>
   <a href="https://www.gnu.org/software/bash/"><img src="https://img.shields.io/badge/shell-zsh%20%2B%20bash-1f425f.svg?style=for-the-badge&logo=gnu-bash" alt="Shell"></a>
   <a href="https://github.com/sambatia/sam-setup/actions"><img src="https://img.shields.io/badge/CI-passing-brightgreen.svg?style=for-the-badge&logo=githubactions" alt="CI"></a>
@@ -15,19 +15,32 @@
 ## 📋 Table of Contents
 
 - [The Experience: What It Feels Like](#-the-experience-what-it-feels-like)
-- [Architecture & Wiring](#-architecture--wiring)
-- [Quick Install](#-quick-install)
+- [Architecture & System Wiring](#-architecture--system-wiring)
+- [Single-Command Installation](#-single-command-installation)
   - [Installation Profiles](#installation-profiles)
   - [What Happens Under the Hood](#what-happens-under-the-hood)
-- [The Superpower Toolset](#-the-superpower-toolset)
-  - [1. Terminal Emulator & Typography](#1-terminal-emulator--typography)
-  - [2. Multiplexing & Pane Navigation](#2-multiplexing--pane-navigation)
-  - [3. Shell, Prompt, & History Engine](#3-shell-prompt--history-engine)
-  - [4. Modern CLI Replacements](#4-modern-cli-replacements)
-  - [5. AI Coding Agents & LLM Pipelines](#5-ai-coding-agents--llm-pipelines)
-  - [6. Data Wrangling, Databases, & APIs](#6-data-wrangling-databases--apis)
-  - [7. Editor Layer (LazyVim Stack)](#7-editor-layer-lazyvim-stack)
-  - [8. Polyglot Runtimes & Package Managers](#8-polyglot-runtimes--package-managers)
+- [AI Coding Agent Ecosystem](#-ai-coding-agent-ecosystem)
+  - [1. Anthropic Claude Code](#1-anthropic-claude-code)
+  - [2. OpenAI Codex CLI](#2-openai-codex-cli)
+  - [3. Google Antigravity CLI (AGY)](#3-google-antigravity-cli-agy)
+  - [4. CLI LLM Pipelines (llm & Ollama)](#4-cli-llm-pipelines-llm--ollama)
+  - [5. Agent Multiplexing & Orchestration (Herdr & Workmux)](#5-agent-multiplexing--orchestration-herdr--workmux)
+  - [6. Model Context Protocol (MCP) Infrastructure](#6-model-context-protocol-mcp-infrastructure)
+  - [7. Universal Cross-Agent Memory (claude-mem & Hindsight)](#7-universal-cross-agent-memory-claude-mem--hindsight)
+- [Terminal File Managers & TUIs](#-terminal-file-managers--tuis)
+  - [1. Yazi (Asynchronous Graphical File Manager)](#1-yazi-asynchronous-graphical-file-manager)
+  - [2. Superfile (spf — Modern Dual-Pane File Manager)](#2-superfile-spf--modern-dual-pane-file-manager)
+  - [3. TUIOS (Terminal Workspace Hub)](#3-tuios-terminal-workspace-hub)
+  - [4. Btop (Catppuccin Mocha System Monitor)](#4-btop-catppuccin-mocha-system-monitor)
+  - [5. Data Wrangling & API TUIs](#5-data-wrangling--api-tuis)
+- [Editor Layer: Neovim & LazyVim Complete Stack](#-editor-layer-neovim--lazyvim-complete-stack)
+  - [Complete Plugin Inventory by Category](#complete-plugin-inventory-by-category)
+  - [Key Neovim Workflows & Triggers](#key-neovim-workflows--triggers)
+- [Terminal Emulator, Multiplexer, & Shell](#-terminal-emulator-multiplexer--shell)
+  - [1. Ghostty Terminal](#1-ghostty-terminal)
+  - [2. Tmux Multiplexer](#2-tmux-multiplexer)
+  - [3. Zsh, Starship Prompt, & Atuin History](#3-zsh-starship-prompt--atuin-history)
+- [Exhaustive Package Manifest Catalog](#-exhaustive-package-manifest-catalog)
 - [Keyboard Shortcuts & Cheatsheet](#-keyboard-shortcuts--cheatsheet)
 - [Maintenance & Diagnostic Suite](#-maintenance--diagnostic-suite)
 - [Local Customization & Extension Points](#-local-customization--extension-points)
@@ -39,65 +52,82 @@
 
 ## 🌟 The Experience: What It Feels Like
 
-Most terminal configurations are loose collections of shell aliases and dotfiles accumulated over years. `sam-setup` is an **engineered developer environment** built around ergonomic flow, microsecond responsiveness, and multi-agent AI pairing:
+Most terminal setups are ad-hoc collections of shell aliases, half-broken symlinks, and outdated packages accumulated over years. `sam-setup` is a **cohesively engineered workstation platform** designed around ergonomic flow, microsecond responsiveness, and multi-agent AI pairing:
 
-* **Instant Launch:** Opening your terminal boots Ghostty with GPU acceleration, 90% opacity blur, Catppuccin Mocha palette, and JetBrains Mono Nerd Font typography.
-* **Fluid Pane Navigation:** Press `Ctrl + h/j/k/l` to move seamlessly between your Neovim buffer, an interactive terminal pane, and an AI agent session without your hands ever leaving the home row.
-* **Intelligent Shell History:** Hit `Ctrl + r` or `Up Arrow` to invoke Atuin's fuzzy history engine with execution durations, exit codes, multi-line editing, and directory-scoped search.
-* **Lightning Data Wrangling:** Open a 500 MB CSV with `vd data.csv` in under 200 ms, slice and dice columns with VisiData, or prototype complex JSON queries in real time with `jqp`.
-* **Integrated AI Workflows:** Launch Claude Code or OpenAI Codex CLI with your terminal context intact, or pipe live system logs directly into language models via `cat error.log | llm "explain this failure"`.
-* **Coordinated Single-Command Updates:** Run `update-all` (or `sam-setup-update`) to synchronize Homebrew, Mise runtimes, global Node CLIs, uv tools, LazyVim plugins, Tmux plugins, and dotfiles in a single safe pass.
+* **Instant, Beautiful Boot:** Launching your terminal opens Ghostty with GPU acceleration, 90% opacity blur, Catppuccin Mocha palette, and JetBrains Mono Nerd Font typography.
+* **Fluid Pane Navigation:** Press `Ctrl + h/j/k/l` to move seamlessly between your Neovim buffer, an interactive terminal pane, a Yazi preview, and an AI agent session without your hands ever leaving the home row.
+* **Intelligent Shell History:** Hit `Ctrl + r` or `Up Arrow` to invoke Atuin's SQLite-backed history engine with execution durations, exit codes, multi-line editing, and directory-scoped search.
+* **Sub-Second File & Data Exploration:** Navigate directory trees visually with Yazi (complete with Ghostty Kitty graphics previews for images, PDFs, and videos), manage files dual-pane in Superfile (`spf`), slice 500 MB CSVs in under 200 ms with VisiData (`vd`), or prototype complex JSON transforms with `jqp`.
+* **Multi-Agent AI Engineering:** Run Claude Code, OpenAI Codex CLI, or Google Antigravity CLI (`agy`) side-by-side inside Herdr with topic synchronization, shared MCP servers, and background memory bridging.
+* **Coordinated Single-Command Updates:** Run `update-all` (or `sam-setup-update`) to synchronize Homebrew, Mise runtimes, global Node CLIs, uv tools, LazyVim plugins, Tmux plugins, and dotfiles in a single safe, ownership-aware pass.
 
 ---
 
-## 🏗 Architecture & Wiring
+## 🏗 Architecture & System Wiring
 
-The ecosystem is layered to guarantee high performance, clear package ownership, and zero PATH conflicts:
+The workstation is layered to guarantee high performance, clear package ownership, and zero PATH conflicts:
 
 ```mermaid
 flowchart TD
     subgraph UI ["1. Presentation Layer"]
-        GHOSTTY["Ghostty (GPU Terminal, Catppuccin, Tabs)"]
-        FONT["JetBrains Mono Nerd Font Mono"]
+        GHOSTTY["Ghostty (GPU Terminal, Catppuccin Mocha, Blur, Native Tabs)"]
+        FONT["JetBrains Mono Nerd Font Mono (Embedded Symbols)"]
     end
 
-    subgraph MUX ["2. Multiplexing Layer"]
-        HERDR["Herdr (Agent Multiplexer & Topic Sync)"]
-        TMUX["Tmux (Prefix Ctrl-A, TPM, RGB Undercurls)"]
-        NAV["Smart-Splits (Ctrl-h/j/k/l Navigation)"]
+    subgraph MUX ["2. Multiplexing & Orchestration Layer"]
+        HERDR["Herdr (Multi-Agent Multiplexer & Topic Sync)"]
+        WORKMUX["Workmux (Git Worktree Isolation)"]
+        TMUX["Tmux (Prefix Ctrl-A, TPM, 50k Scrollback, RGB Undercurls)"]
+        NAV["Smart-Splits (Ctrl-h/j/k/l Seamless Navigation)"]
     end
 
-    subgraph SHELL ["3. Shell & Navigation Engine"]
-        ZSH["Modular Zsh (.zshrc.d/)"]
-        STARSHIP["Starship Prompt (250ms latency ceiling)"]
+    subgraph SHELL ["3. Shell & History Engine"]
+        ZSH["Modular Zsh (.zshrc.d/ fail-closed loader)"]
+        STARSHIP["Starship Prompt (2-line, 250ms latency ceiling)"]
         ATUIN["Atuin (SQLite Daemon Socket History)"]
         ZOXIDE["Zoxide (Smart cd)"]
-        FZF["Fzf (Fuzzy Finder)"]
+        FZF["Fzf (Fuzzy Finder & fzf-git)"]
     end
 
-    subgraph WORK ["4. Engineering & Execution Layer"]
-        NVIM["Neovim / LazyVim (LSP, Treesitter, Snacks)"]
-        CLIS["Modern CLIs (eza, bat, ripgrep, fd, dust, btop)"]
-        DATA["Data & API (visidata, jqp, lazysql, mitmproxy, posting)"]
-        AI["AI Agents (Claude Code, Codex CLI, llm)"]
+    subgraph TUIS ["4. Terminal User Interfaces"]
+        YAZI["Yazi (Async Rust File Manager + 12 Plugins)"]
+        SPF["Superfile (spf — Dual-Pane Go File Manager)"]
+        TUIOS["TUIOS (Terminal Workspace Hub)"]
+        BTOP["Btop (C++ System Monitor, Catppuccin)"]
+        DATA["Data Wranglers (VisiData, jqp, LazySQL, Posting)"]
     end
 
-    subgraph RUNTIMES ["5. Runtime & Package Managers"]
-        BREW["Homebrew (CLIs, Casks, Infrastructure)"]
-        MISE["mise (Node.js LTS, pnpm, Python)"]
+    subgraph EDIT ["5. Editor Layer"]
+        NVIM["Neovim / LazyVim (30+ Plugins, LSP, Treesitter, CodeCompanion, Snacks)"]
+    end
+
+    subgraph AI ["6. AI Coding Agent Fabric"]
+        CLAUDE["Claude Code (Homebrew Cask, Opus-5)"]
+        CODEX["OpenAI Codex CLI (Mise npm, gpt-6-astra)"]
+        AGY["Antigravity CLI (agy v1.4.6, Gemini 3)"]
+        LLM["llm CLI + llm-ollama (Unix Stream Pipes)"]
+        MEM["claude-mem & Hindsight (Memory Daemons)"]
+        MCPS["Shared MCP Infrastructure (15+ Servers)"]
+    end
+
+    subgraph RUNTIMES ["7. Runtimes & Package Ownership"]
+        BREW["Homebrew (CLIs, Casks, Compilers)"]
+        MISE["mise (Node.js LTS, pnpm, Codex, TS)"]
         UV["uv (Isolated Python CLI Tools)"]
         CHEZMOI["chezmoi (Dotfile State & Templates)"]
     end
 
     UI --> MUX
     MUX --> SHELL
-    SHELL --> WORK
-    WORK --> RUNTIMES
+    SHELL --> TUIS
+    SHELL --> EDIT
+    SHELL --> AI
+    TUIS & EDIT & AI --> RUNTIMES
 ```
 
 ---
 
-## ⚡ Quick Install
+## ⚡ Single-Command Installation
 
 Paste this single command into macOS Terminal and press Enter:
 
@@ -110,10 +140,10 @@ Paste this single command into macOS Terminal and press Enter:
 You can choose your footprint depending on your workflow needs:
 
 ```bash
-# 1. Full Installation (Recommended - Complete AI engineering, Cloud/K8s, DB & Terminal stack)
+# 1. Full Installation (Recommended — Complete AI engineering, Cloud/K8s, DB & Terminal stack)
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/sambatia/sam-setup/main/bootstrap.sh)"
 
-# 2. Core Profile (Lightweight - Shell, Ghostty, LazyVim, Multiplexers, & Modern CLIs only)
+# 2. Core Profile (Lightweight — Shell, Ghostty, LazyVim, Multiplexers, & Modern CLIs only)
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/sambatia/sam-setup/main/bootstrap.sh)" -- --core
 
 # 3. Unattended / Automated (Skips the interactive confirmation prompt)
@@ -125,16 +155,16 @@ SAM_SETUP_YES=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/sam
 The `bootstrap.sh` pipeline executes a 10-phase automated setup:
 
 ```
-[01/10] Pre-flight Guards   ── Verifies macOS 13+, arm64/Intel, >=10 GB disk space, & battery level.
+[01/10] Pre-flight Guards   ── Verifies macOS 13+, arm64/Intel, >=10 GB disk space, & AC power.
 [02/10] Sudo Keep-Alive     ── Caches admin credentials in background so GUI cask downloads never stall.
 [03/10] Core Prerequisites  ── Installs Xcode Command Line Tools, Rosetta 2 (if Apple Silicon), & Homebrew.
 [04/10] Identity Isolation  ── Prompts for your Name and Git Email to generate your private .gitconfig.
 [05/10] Safety Backup       ── Copies existing ~/.zshrc, ~/.tmux.conf, ~/.config/nvim to *.bak-<timestamp>.
-[06/10] Toolchain Bundle    ── Installs 55+ curated CLIs, Ghostty, Nerd Fonts, and casks via Brewfile.
-[07/10] Polyglot Runtimes   ── Installs Node.js LTS, pnpm, and developer runtimes via mise and uv.
-[08/10] Editor Sync         ── Headlessly initializes LazyVim plugins and clones tmux TPM plugins.
-[09/10] SSH Keygen          ── Generates an ed25519 SSH key ONLY if no private key currently exists.
-[10/10] Health Check        ── Executes sam-setup-check (44 assertions) and offers to launch Ghostty.
+[06/10] Toolchain Bundle    ── Installs 120+ curated CLIs, Ghostty, Nerd Fonts, and casks via Brewfile.
+[07/10] Polyglot Runtimes   ── Installs Node.js LTS, pnpm, Codex CLI, and Python runtimes via mise and uv.
+[08/10] Editor & TUIs Sync  ── Headlessly initializes LazyVim plugins and deploys all 12 Yazi plugins.
+[09/10] Multiplexers & TPM  ── Clones tmux TPM plugins and installs Herdr agent integrations (claude, codex, etc.).
+[10/10] Health Check        ── Executes sam-setup-check (53 assertions) and offers to launch Ghostty.
 ```
 
 > [!TIP]
@@ -142,85 +172,252 @@ The `bootstrap.sh` pipeline executes a 10-phase automated setup:
 
 ---
 
-## 🧰 The Superpower Toolset
+## 🤖 AI Coding Agent Ecosystem
 
-Every tool in `sam-setup` was chosen according to the **"one winner per niche"** principle — zero duplicate tools fighting over PATH or system sockets.
+`sam-setup` provides an interconnected, production-ready AI coding fabric with zero configuration friction:
 
-### 1. Terminal Emulator & Typography
-* **[Ghostty](https://ghostty.org/) (v1.3+):** Next-generation, GPU-accelerated terminal emulator written in Zig. Configured with native macOS tabs (`Cmd+t`), split panes (`Cmd+d`), Catppuccin Mocha colors, and 90% opacity with window blur.
-* **[JetBrains Mono Nerd Font Mono](https://www.jetbrains.com/lp/mono/):** High-legibility developer font with programming ligatures, crisp rendering, and full Powerline/Nerd Font glyph coverage.
+```mermaid
+graph TD
+    USER["User / Terminal Prompt"] --> HERDR["Herdr Multiplexer"]
+    HERDR --> CLAUDE["Claude Code (v2.1.309)<br/>Official Homebrew Cask"]
+    HERDR --> CODEX["Codex CLI (v0.163.0)<br/>Mise npm package"]
+    HERDR --> AGY["AGY / Antigravity (v1.4.6)<br/>~/.local/bin/agy"]
+    HERDR --> OMP["Oh My Pi (v18.12.6)<br/>Mise binary"]
 
-### 2. Multiplexing & Pane Navigation
-* **[Tmux](https://github.com/tmux/tmux) (v3.5+):** 
-  - Ergonomic `Ctrl-A` prefix (replaces awkward `Ctrl-b`).
-  - True-color 24-bit RGB pass-through and undercurl styling for Neovim diagnostics.
-  - Intuitive window splits: `prefix + |` (vertical) and `prefix + -` (horizontal).
-  - Mouse mode toggle with `prefix + m`.
-  - Managed plugins via TPM: `tmux-sensible`, `tmux-resurrect`, `tmux-continuum`, `tmux-yank`, `tmux-fzf`, and `tmux-ukiyo`.
-* **[Herdr](https://github.com/danbuhler/herdr):** Agentic terminal multiplexer designed specifically for AI workflows, featuring pane topic synchronization and status bar integration.
-* **Smart-Splits (`vim-tmux-navigator`):** Unified navigation binding `Ctrl-h`, `Ctrl-j`, `Ctrl-k`, `Ctrl-l` that traverses seamlessly across Neovim splits, Herdr panes, and Tmux windows.
-* **[Workmux](https://github.com/raine/workmux):** Automated Git worktree isolation for spawning parallel coding agent tasks in independent tmux windows.
+    CLAUDE <--> CMEM["claude-mem Daemon<br/>(Bun background worker)"]
+    AGY <--> CMEM
+    CLAUDE <--> HS["Hindsight Memory API<br/>(uv tool daemon)"]
+    CODEX <--> HS
 
-### 3. Shell, Prompt, & History Engine
-* **Modular Zsh Architecture:** Structured startup sequence:
-  `~/.zshenv` $\rightarrow$ `~/.zprofile` $\rightarrow$ `~/.zshrc` $\rightarrow$ `~/.zshrc.d/*.zsh` $\rightarrow$ `~/.zshrc.local` (your personal overrides).
-* **[Starship](https://starship.rs/):** Ultra-fast, two-line prompt displaying Git branch and dirty state, language runtime versions (Node, Python, Rust, Go), command execution duration, and exit status, with a strict 250ms latency ceiling.
-* **[Atuin](https://atuin.sh/):** SQLite daemon-backed history search accessible via `Ctrl-r` or `Up Arrow`. Provides instant fuzzy filtering, execution time, exit codes, and multi-line script navigation. Configured in local-only mode for absolute privacy.
-* **[Zoxide](https://github.com/ajeetdsouza/zoxide):** Smarter `cd` command that learns your habits. Type `z project` to jump directly into deeply nested directories.
-* **[Fzf](https://github.com/junegunn/fzf):** Fuzzy finder integrated into shell shortcuts (`Ctrl-t` to search files, `Alt-c` to navigate directories) and Git commands via `fzf-git`.
+    CLAUDE --> MCP_C["Claude MCPs:<br/>filesystem, chrome-devtools, omnisearch, neon..."]
+    CODEX --> MCP_X["Codex MCPs:<br/>desktop-commander, granola, atlassian..."]
+    AGY --> MCP_G["AGY MCPs:<br/>agentation, context7, playwright..."]
+```
 
-### 4. Modern CLI Replacements
-Replace antiquated Unix utilities with fast, syntax-highlighted, Rust-powered alternatives:
+### 1. Anthropic Claude Code
+* **Distribution:** Installed via official Homebrew Cask `claude-code@latest` (v2.1.309).
+* **Launch Command:** `claude` (aliased to `claudew`, a health guard ensuring memory daemon connectivity before launching).
+* **Model:** Default configured for `claude-opus-5`.
+* **Security & Permission Engine:**
+  - Automated approvals for read-only inspection commands (`git status`, `ls`, `grep`).
+  - Strict security deny-rules blocking unauthorized reads to sensitive paths: `Read(**/.env)`, `Read(~/.aws/**)`, `Read(~/.config/gh/**)`, `Read(~/.gnupg/**)`, `Read(~/.netrc)`, `Read(~/.ssh/**)`.
+* **Hooks:** Wired into Piclatch clipboard screenshot capture and `claude-mem` automatic memory synthesis.
 
-| Legacy Tool | Modern Winner | Command | Superpower |
+### 2. OpenAI Codex CLI
+* **Distribution:** Managed via `mise` (`npm:@openai/codex` v0.163.0).
+* **Launch Command:** `codex`
+* **Configuration:** `~/.codex/config.toml`
+* **Model Hierarchy:** Powered by `gpt-6-astra` (Reasoning effort: `max`, Plan mode reasoning effort: `high`).
+* **Governance & Rules:** Reads project and workspace instructions from `AGENTS.md`. Integrated with `@opengsd/gsd-core` and `gstack` (`garrytan/gstack`) for phased, structured task execution.
+* **Multiplexer Integration:** Pre-registered with Herdr (`herdr integration install codex`) for seamless split-pane agent pairing.
+
+### 3. Google Antigravity CLI (AGY)
+* **Distribution:** Standalone binary located at `~/.local/bin/agy` (v1.4.6), integrated with Google Antigravity / Gemini 3 models.
+* **Launch Command:** `agy` (aliased in interactive shells to `agy --dangerously-skip-permissions` for frictionless pair programming).
+* **Ownership & Self-Updating Architecture:**
+  > [!NOTE]
+  > Homebrew's `antigravity-cli` cask was intentionally retired because `agy` contains an internal background self-updater that continuously replaces Homebrew's symlink with a direct binary, causing `brew upgrade` collision failures. `sam-setup` houses `agy` in `~/.local/bin/agy` where its native updater operates safely without package manager conflicts.
+* **Lifecycle Hook Pipeline:** 8 comprehensive lifecycle event bindings (`SessionStart`, `BeforeAgent`, `BeforeTool`, `AfterTool`, `AfterAgent`, `Notification`, `PreCompress`, `SessionEnd`). Hooks into `claude-mem` via Bun on every turn, and runs GitNexus code graph hooks.
+* **Orbit HUD:** Custom status line monitoring agent tokens, active tools, and reasoning state.
+
+### 4. CLI LLM Pipelines (llm & Ollama)
+* **Distribution:** Installed via Homebrew `brew "llm"`.
+* **Local Inference:** Bundled with the `llm-ollama` plugin to connect to local Ollama models (`http://localhost:11434`) with zero cloud latency and zero cost.
+* **Unix Pipe Superpower:** Pass logs, diffs, and code directly into LLMs:
+  ```bash
+  # Explain test failure
+  npm test 2>&1 | llm "summarize why the test failed and write the fix"
+
+  # Review git diff
+  git diff | llm "review this diff for edge cases and regressions"
+  ```
+
+### 5. Agent Multiplexing & Orchestration (Herdr & Workmux)
+* **Herdr (`herdr`):** Agent-aware terminal multiplexer. Automatically synchronizes pane titles with active task topics, maintains clean shell states via `herdr-refresh-safe-shell-panes`, and integrates with Neovim via `smart-splits`.
+* **Workmux (`workmux`):** Automates Git worktree creation for isolated agent coding in sibling `<repo>__worktrees/` directories, preventing AI agents from modifying your active working tree.
+
+### 6. Model Context Protocol (MCP) Infrastructure
+A unified MCP ecosystem pre-configured across Claude Code, Codex, and AGY:
+
+| MCP Server | Transport | Purpose | Security Boundary |
 | :--- | :--- | :--- | :--- |
-| `ls` | **[eza](https://github.com/eza-community/eza)** | `l`, `ll`, `lt` | Colorized metadata, git status per file, tree views, icon support. |
-| `cat` | **[bat](https://github.com/sharkdp/bat)** | `bat <file>` | Syntax highlighting for 200+ languages, line numbers, git change indicators. |
-| `grep` | **[ripgrep](https://github.com/BurntSushi/ripgrep)** | `rg "<pattern>"` | Recursive search respecting `.gitignore`, 10x faster than GNU grep. |
-| `find` | **[fd](https://github.com/sharkdp/fd)** | `fd <name>` | Intuitive syntax, colorized output, regex support, ignores hidden files by default. |
-| `du` | **[dust](https://github.com/bootandy/dust)** | `dust` | Graphical tree view showing exactly what is consuming your disk space. |
-| `top` | **[btop](https://github.com/aristocratos/btop)** | `btop` | Gorgeous TUI system monitor showing CPU, memory, disks, network, and processes. |
-| `ps` | **[procs](https://github.com/dalance/procs)** | `procs <name>` | Colorized process viewer with tree views, port usage, and memory consumption. |
-| `curl` | **[xh](https://github.com/ducaale/xh)** | `xh <url>` | Friendly HTTP client with automatic JSON formatting and syntax highlighting. |
-| `ping` | **[gping](https://github.com/orf/gping)** | `gping <host>` | Visual, real-time graph of ping latency over time. |
-| `sed` | **[sd](https://github.com/chmln/sd)** | `sd "before" "after"` | Modern find-and-replace using regex with intuitive syntax. |
-| `cut` | **[choose](https://github.com/theryangeary/choose)** | `choose 1 3` | Human-friendly field selector using Python-style slice indexing. |
+| **`filesystem`** | stdio | Safe directory access (`/Projects`, `/Obsidian`) | Scoped local directories |
+| **`sequential-thinking`** | stdio | Step-by-step analytical reasoning engine | Local compute |
+| **`chrome-devtools`** | stdio | Headless browser automation & web testing | Port 9222 debug profile |
+| **`omnisearch`** | stdio | Fast web documentation and internet search | Tavily API |
+| **`neon`** | HTTP | Serverless PostgreSQL database inspection | Read-only scoped token |
+| **`clerk`** | HTTP | Clerk authentication architecture reference | Cloud documentation |
+| **`context7`** | stdio | Upstash & modern cloud library docs query | Upstash cloud |
+| **`serena`** | stdio | Semantic code indexing and editing assistant | Local daemon |
+| **`desktop-commander`** | stdio | System desktop and file exploration bridge | Local stdio |
+| **`apidog-mcp`** | stdio | API design, test cases, and mock server bridge | Scoped project ID |
 
-### 5. AI Coding Agents & LLM Pipelines
-* **[Claude Code](https://claude.ai/code):** Anthropic's official agentic coding assistant installed via the native Homebrew cask (`claude-code@latest`). Fully wired into local Git and MCP tools.
-* **Codex CLI:** OpenAI's terminal coding assistant managed through Mise.
-* **[llm](https://llm.datasette.io/) (v0.36):** Simon Willison's CLI utility for accessing local and cloud LLMs via standard Unix pipes.
-  - Pre-configured with **`llm-ollama`** plugin to connect directly to local Ollama models (`http://localhost:11434`) without requiring cloud API keys.
-  - Example: `cat error.log | llm "explain why this failed and propose a fix"`
+### 7. Universal Cross-Agent Memory (claude-mem & Hindsight)
+* **`claude-mem`:** Cross-agent, cross-session persistent memory running as a background daemon via Bun. Stores context, past debugging outcomes, and architectural facts in a local SQLite database (`~/.claude-mem/claude-mem.db`). Both Claude Code and AGY read and write to this shared memory pool.
+* **`Hindsight`:** Verified lesson retention engine. Automatically captures and verifies engineering lessons learned (problem, root cause, corrective rule, evidence) without leaking private directory context.
 
-### 6. Data Wrangling, Databases, & APIs
-* **[VisiData](https://www.visidata.org/) (`vd`):** Interactive terminal multitool for opening, exploring, filtering, and summarizing large tabular datasets (CSV, TSV, JSON, SQLite, Parquet).
-* **[jqp](https://github.com/noahgorstein/jqp):** Interactive TUI playground to prototype, test, and view `jq` queries against live JSON streams in real time.
-* **[LazySQL](https://github.com/jorgerojas26/lazysql):** Keyboard-driven database management TUI supporting PostgreSQL, SQLite, and MySQL. Adheres to strict read-only safety by default.
-* **[Posting](https://posting.sh):** Powerful terminal REST client with autocompletion, response formatting, and environment variables.
-* **[mitmproxy](https://mitmproxy.org/):** Interactive TLS/HTTP interception proxy, headless dumper (`mitmdump`), and web-based dashboard (`mitmweb`) for debugging APIs and webhooks.
-* **[Kondo](https://github.com/tbillington/kondo):** Blazingly fast build artifact cleaner. Scans project trees to find and delete bloated `node_modules`, `target`, `venv`, and `.cache` directories (`kondo -n` for dry run).
-* **[Trippy](https://github.com/fujiapple852/trippy) (`trip`):** Interactive network diagnostic combining traceroute and ping into a responsive terminal UI.
+---
 
-### 7. Editor Layer (LazyVim Stack)
-A complete, turnkey **[LazyVim](https://www.lazyvim.org)** configuration lives in `~/.config/nvim`:
-* **Plugin Architecture:** Powered by `lazy.nvim` with reproducible lockfile pins.
-* **Language Support:** Pre-configured LSP servers and linters installed via Mason (TypeScript, Python, Rust, Go, Markdown, Bash).
-* **Syntax Trees:** High-performance syntax highlighting and text objects via `nvim-treesitter`.
-* **Fast Navigation:** Telescope and Snacks.nvim pickers for instant file and code symbol search.
-* **AI Assistance:** CodeCompanion plugin pre-wired for in-editor code completions and diff refactoring.
+## 🖥 Terminal File Managers & TUIs
 
-### 8. Polyglot Runtimes & Package Managers
-* **[Homebrew](https://brew.sh/):** Manages CLI tools, fonts, and macOS applications.
-* **[mise](https://mise.jdx.dev/):** Fast, polyglot version manager configured with Node.js LTS, pnpm, Codex CLI, and developer tools. Replaces slow shims like nvm, asdf, and pyenv.
-* **[uv](https://docs.astral.sh/uv/):** Blazingly fast Python package and tool manager. Installs isolated CLI tools (`basedpyright`, `gita`, `mlx-lm`, `specify-cli`) in clean sandboxes.
-* **[chezmoi](https://www.chezmoi.io/):** State engine that tracks your dotfiles in Git and renders templates dynamically.
+`sam-setup` equips you with a formidable suite of modern Terminal User Interfaces:
+
+### 1. Yazi (Asynchronous Graphical File Manager)
+Written in Rust, **[Yazi](https://github.com/sxyazi/yazi)** is an ultra-fast, async terminal file manager that renders crisp graphical previews directly inside Ghostty via the Kitty graphics protocol:
+
+* **Shell Navigation Wrapper (`y`):** Launch Yazi with `y`. When you exit with `q`, your parent Zsh shell automatically `cd`s to the directory you were browsing in Yazi!
+* **Rich In-Terminal Previews:** View full-resolution images, PDF pages (via `poppler`), video thumbnails (via `ffmpegthumbnailer`), SVG vectors (via `resvg`), and compressed archives (via `unar` and `7z`).
+* **12 Pre-Bundled & Active Plugins:**
+  1. **`yatline.yazi` & `yatline-compat.yazi`:** Powerline statusline displaying permissions, size, git branch, and cursor metrics.
+  2. **`git.yazi`:** Real-time Git status badges (modified, untracked, added, staged) next to files.
+  3. **`full-border.yazi`:** Clean box-drawing rounded borders around all splits.
+  4. **`smart-filter.yazi`:** Continuous fuzzy filtering that narrows results as you type.
+  5. **`smart-enter.yazi`:** Smart enter key: opens directories or executes files in Neovim/pager.
+  6. **`jump-to-char.yazi`:** Vim-like `f`/`F` character hopping in long file listings.
+  7. **`toggle-pane.yazi`:** Dynamic toggle to hide parent directory and maximize preview space.
+  8. **`augment-command.yazi`:** Enhanced command palette for batch file actions.
+  9. **`clipboard.yazi` & `clipboard-sync.yazi`:** Synchronizes yanked/cut files with the macOS clipboard.
+  10. **`pref-by-location.yazi`:** Directory-specific view modes and sorting persistence.
+
+### 2. Superfile (`spf` — Modern Dual-Pane File Manager)
+Written in Go, **[Superfile](https://github.com/yorukot/superfile)** (`spf`) is an intuitive, side-by-side file manager designed for users who love dual-pane file wrangling:
+* **Dual-Pane Layout:** View two directories simultaneously to drag, copy, or move files between panels.
+* **Keyboard Flow:** Navigate with `h/j/k/l`, tab between panels with `Tab`, select files with `Space`, and create files/folders with `n`.
+* **Integrated Metadata Panel:** Live file size, permissions, MIME type, and disk space gauges.
+
+### 3. TUIOS (Terminal Workspace Hub)
+**[TUIOS](https://github.com/tuios/tuios)** (`tuios`) is a terminal workspace manager and hub:
+* **Workspace Launcher:** Switch between pre-configured terminal work layouts, tiled windows, and monitoring panels.
+* **Non-Intrusive Background Integration:** Pre-configured in `~/.config/tuios/config.toml` in standalone mode, ready to bind into multiplexer sessions.
+
+### 4. Btop (Catppuccin Mocha System Monitor)
+**[Btop](https://github.com/aristocratos/btop)** is the reigning champion of system monitors:
+* **Custom Theme:** Pre-configured with Catppuccin Mocha palette matching Ghostty and Neovim.
+* **Real-Time Hardware Graphs:** Per-core CPU utilization, temperature sensors, frequency scaling, memory & swap meters, and disk I/O activity.
+* **Process Tree:** Interactive process browser with tree grouping, resource sorting, filtering (`f`), and one-key signaling (`k` to terminate/kill, `r` to renice).
+* **Network Traffic:** Real-time upload/download bandwidth charts and latency monitoring.
+
+### 5. Data Wrangling & API TUIs
+* **[VisiData](https://www.visidata.org/) (`vd`):** Instant tabular spreadsheet wrangler for opening multi-gigabyte CSV, TSV, Parquet, and SQLite files. Slice, filter, pivot, and chart data without leaving the terminal.
+* **[jqp](https://github.com/noahgorstein/jqp):** Interactive `jq` playground. Type queries in real time and see the JSON output update instantly.
+* **[LazySQL](https://github.com/jorgerojas26/lazysql):** Keyboard-driven database explorer supporting PostgreSQL, SQLite, and MySQL with safe, read-only defaults.
+* **[Posting](https://posting.sh):** High-productivity TUI REST and HTTP client with environment variables and response formatting.
+* **[LazyDocker](https://github.com/jesseduffield/lazydocker) (`ld`):** Interactive terminal UI for Docker containers, images, volumes, and logs.
+* **[LazyGit](https://github.com/jesseduffield/lazygit) (`lg`):** The world's finest Git TUI for staging hunks, interactive rebasing, branch management, and conflict resolution.
+
+---
+
+## 📝 Editor Layer: Neovim & LazyVim Complete Stack
+
+A production-grade, turnkey **[LazyVim](https://www.lazyvim.org)** distribution lives in `~/.config/nvim`, pre-configured with 30+ plugins locked via `lazy-lock.json`:
+
+### Complete Plugin Inventory by Category
+
+| Category | Plugins Installed | Functional Role & Superpower |
+| :--- | :--- | :--- |
+| **Distribution & Base** | `LazyVim`, `lazy.nvim` | Core framework, reproducible lockfile pins, lazy loading. |
+| **File & Code Navigation**| `snacks.nvim`, `telescope.nvim`, `oil.nvim`, `harpoon`, `smart-splits.nvim` | Instant fuzzy file/symbol picker, edit filesystem like a buffer (`oil`), mark favorite files (`harpoon`), seamless split navigation (`smart-splits`). |
+| **Language Servers (LSP)**| `nvim-lspconfig`, `mason.nvim`, `mason-lspconfig.nvim`, `lazydev.nvim` | Automated LSP server installation (TS, Python, Rust, Go, Bash, Markdown) with zero manual setup. |
+| **Formatting & Linting**  | `conform.nvim`, `nvim-lint`, `SchemaStore.nvim` | Blazing auto-format on save (Biome, Ruff, shfmt); JSON/YAML schema validation. |
+| **Code Completion & AST** | `blink.cmp`, `nvim-treesitter`, `nvim-treesitter-textobjects`, `nvim-ts-autotag`, `friendly-snippets`, `mini.pairs`, `mini.ai` | Fast Rust-powered fuzzy completion (`blink.cmp`), AST syntax highlighting, auto closing tags, text object expansion. |
+| **AI In-Editor Pairing**  | `codecompanion.nvim`, `copilot.lua`, `blink-copilot` | In-editor chat and inline code transformations (`codecompanion`), ghost-text completions (`copilot`). |
+| **Diagnostics & Search**  | `trouble.nvim`, `flash.nvim`, `grug-far.nvim`, `todo-comments.nvim` | Diagnostics tree panel (`trouble`), 2-character jump navigation (`flash`), project-wide search & replace (`grug-far`). |
+| **Git & PR Workflows**    | `gitsigns.nvim`, `octo.nvim`, `diffview-plus.nvim` | Gutter diff badges, inline blame, GitHub PRs/issues inside Neovim (`octo`), side-by-side git diffs. |
+| **Markdown & PKM**        | `render-markdown.nvim`, `markdown-preview.nvim`, `obsidian.nvim`, `table-nvim` | In-buffer rendered markdown callouts and checkboxes, live browser preview, Obsidian vault links, table formatting. |
+| **Data & REST APIs**      | `kulala.nvim`, `csvview.nvim` | In-editor HTTP request runner (`kulala`), interactive spreadsheet table viewer for CSVs (`csvview`). |
+| **UI, Themes & Guidance** | `catppuccin`, `tokyonight.nvim`, `kanagawa.nvim`, `lualine.nvim`, `bufferline.nvim`, `noice.nvim`, `which-key.nvim`, `mini.icons` | Catppuccin Mocha theme, statusline (`lualine`), buffer tabs, command line popups (`noice`), visual keybinding helper (`which-key`). |
+
+### Key Neovim Workflows & Triggers
+
+| Shortcut | Action | Description |
+| :--- | :--- | :--- |
+| **`<Space> e`** | Snacks File Explorer | Toggle sidebar file tree with git indicators |
+| **`-`** | Oil.nvim Filesystem Buffer | Edit the current directory like a regular text file (rename, delete, move) |
+| **`<Space> ff`** | Find Files | Instant fuzzy file search across project |
+| **`<Space> sg`** | Live Grep | Blazing ripgrep search across all project contents |
+| **`<Space> xx`** | Trouble Diagnostics | Open project error and warning diagnostics panel |
+| **`Ctrl + \`** | CodeCompanion Chat | Toggle AI pairing chat panel inside Neovim |
+| **`<Space> a`** | CodeCompanion Actions | Trigger inline AI refactoring, code explanation, or test generation |
+| **`s`** | Flash Navigation | Type 2 characters to jump anywhere on the screen |
+| **`K`** | LSP Hover Documentation | View type signatures, docstrings, and hover information |
+| **`gd`** | Goto Definition | Jump directly to symbol definition |
+| **`<Space> gg`** | Lazygit | Open Lazygit TUI overlaid inside Neovim |
+| **`Ctrl + h/j/k/l`** | Smart-Splits Navigation | Seamlessly move focus between Neovim splits, Tmux, and Herdr panes |
+
+---
+
+## 🖥 Terminal Emulator, Multiplexer, & Shell
+
+### 1. Ghostty Terminal
+Configured in `~/.config/ghostty/config`:
+* **Typography:** `JetBrainsMono Nerd Font Mono` at size 13 with embedded Powerline and symbol glyphs.
+* **Palette:** `Catppuccin Mocha` with 90% background opacity and 16px background blur radius.
+* **macOS Integration:** Native tabs (`Cmd+t`), splits (`Cmd+d`), and `macos-titlebar-style = tabs` (eliminates titlebar deadzones). Left Option acts as Alt for word navigation; Right Option preserves macOS characters.
+
+### 2. Tmux Multiplexer
+Configured in `~/.tmux.conf`:
+* **Prefix:** `Ctrl + a` (replaces default `Ctrl-b`).
+* **Display & Graphics:** 50,000 line scrollback buffer, 10ms escape-time, true-color 24-bit RGB pass-through, undercurl styling, and Kitty graphics pass-through for Yazi.
+* **Splits:** `prefix + |` (vertical) and `prefix + -` (horizontal).
+* **Managed Plugins via TPM:** `tmux-sensible`, `tmux-resurrect`, `tmux-continuum`, `tmux-yank`, `tmux-fzf`, `tmux-nerd-font-window-name`, `tmux-ukiyo`, and `vim-tmux-navigator`.
+
+### 3. Zsh, Starship Prompt, & Atuin History
+* **Modular Zsh (`~/.zshrc.d/`):** Clean separation of aliases, environment variables, completions, and functions with a fail-closed optional plugin preflight engine.
+* **Starship Prompt (`starship.toml`):** 2-line prompt showing Git branch/dirty state, Node/Python/Rust/Go runtimes, execution time, and exit status, with a strict 250ms latency ceiling.
+* **Atuin History Search:** SQLite daemon-backed history search invoked via `Ctrl-r` or `Up Arrow`. Search by exit code, duration, directory, or timestamp with fuzzy matching.
+
+---
+
+## 📦 Exhaustive Package Manifest Catalog
+
+`sam-setup` installs and manages 120+ curated tools across dedicated package managers:
+
+### Homebrew Formulae & Taps (100+ CLIs & Infrastructure Tools)
+* **Taps:** `alajmo/mani`, `ankitpokhrel/jira-cli`, `aquasecurity/trivy`, `atlassian/acli`, `dagger/tap`, `felixkratz/formulae`, `nats-io/nats-tools`, `raine/workmux`, `resend/cli`, `stripe/stripe-cli`, `teamookla/speedtest`, `terraform-linters/tap`, `yoanwai/tap`.
+* **Shell & Multiplexers:** `zsh`, `zsh-autocomplete`, `zsh-autosuggestions`, `zsh-completions`, `zsh-syntax-highlighting`, `starship`, `zoxide`, `atuin`, `fzf`, `carapace`, `direnv`, `fastfetch`, `tmux`, `herdr`, `workmux`.
+* **Modern CLIs & TUIs:** `eza`, `bat`, `ripgrep`, `fd`, `dust`, `duf`, `procs`, `choose-rust`, `sd`, `glow`, `ov`, `tlrc`, `gping`, `trippy`, `hyperfine`, `viddy`, `yazi`, `superfile`, `tuios`, `kondo`, `btop`, `chafa`, `lnav`, `ncdu`, `gum`, `navi`, `rich-cli`.
+* **Git & Version Control:** `git`, `git-delta`, `git-absorb`, `git-lfs`, `difftastic`, `hunk`, `lazygit`, `gh`, `gitleaks`, `mani`.
+* **Data Processing, Networks, & APIs:** `jq`, `jqp`, `yq`, `fx`, `qsv`, `visidata`, `lazysql`, `xh`, `hurl`, `doggo`, `posting`, `pgcli`, `nats`, `speedtest`.
+* **AI & LLM Tooling:** `llm`.
+* **Runtimes & Compilers:** `mise`, `uv`, `pipx`, `rustup`, `just`, `neovim`, `python@3.12`, `shfmt`, `shellcheck`.
+* **Containers & Cloud Infrastructure:** `docker`, `dive`, `lazydocker`, `argocd`, `helm`, `k9s`, `krew`, `kubeconform`, `kubectx`, `kubescape`, `popeye`, `stern`, `cosign`, `crane`, `syft`, `dagger`, `opentofu`, `awscli`, `sops`, `age`, `trufflehog`, `trivy`, `act`.
+* **Linters, Code Quality, & System Utilities:** `actionlint`, `biome`, `golangci-lint`, `markdownlint-cli2`, `markdown-toc`, `marksman`, `ruff`, `typos-cli`, `lychee`, `pre-commit`, `lefthook`, `tokei`, `tree`, `watchexec`, `coreutils`, `wget`, `unar`, `sevenzip`, `pngpaste`, `poppler`, `ffmpegthumbnailer`, `resvg`.
+
+### Homebrew Casks (GUI Applications & Typography)
+* `ghostty` (GPU terminal emulator)
+* `font-jetbrains-mono` & `font-jetbrains-mono-nerd-font` (Core typography)
+* `claude-code@latest` (Anthropic Claude Code CLI)
+* `orbstack` (Fast Docker & Linux container runtime)
+* `tableplus` (Database management GUI)
+* `bruno` (Offline, Git-friendly API client)
+* `mitmproxy` (HTTP/TLS interception proxy)
+* `1password-cli` (Secure credential CLI)
+* `agent-manager` (AI coding agent manager)
+
+### Python Standalone Tools (Managed via `uv tool`)
+* `basedpyright` — High-performance Python type checker & LSP
+* `codegraphcontext` (`cgc`) — Codebase graph extractor
+* `debugpy` — Python debugger engine
+* `gita` — Multi-repository Git orchestration
+* `graphifyy` (`graphify`) — Knowledge graph builder
+* `huggingface-hub` (`hf`) — Hugging Face model & dataset hub
+* `mkdocs` — Project documentation generator
+* `mlx-lm` — Apple Silicon local LLM server and runner
+* `serena-agent` (`serena`) — Semantic coding assistant & MCP
+* `skillspector` — Agent skill security and linting auditor
+* `specify-cli` (`specify`) — Spec-driven software engineering CLI
+* `textual-dev` — Rich TUI application development framework
+
+### Polyglot Runtimes & Global CLIs (Managed via `mise`)
+* **Core Runtimes:** `node` (Node.js LTS v24+), `pnpm` (v11+), `python` (via uv).
+* **Core Developer CLIs:** `npm:@openai/codex` (OpenAI Codex CLI), `npm:typescript`, `npm:typescript-language-server`, `npm:tree-sitter-cli` (allowlisted for safe builds), `github:can1357/oh-my-pi` (OMP agent CLI), `github:librespeed/speedtest-cli`.
+* **Global Node CLI Task (`mise run node-globals`):** `@google/gemini-cli`, `opencode-ai`, `apidog-cli`, `@earendil-works/pi-coding-agent`, `ccusage`, `repomix`, `gitnexus`, `skills`, `@modelcontextprotocol/*`, `chrome-devtools-mcp`, `mcp-omnisearch`, `@railway/mcp-server`, `wrangler`, `vercel`, `neon`, `@railway/cli`, `drizzle-kit`, `turbo`, `tsx`, `ts-node`, `inngest-cli`, `playwright`, `@modelcontextprotocol/inspector`.
 
 ---
 
 ## ⌨️ Keyboard Shortcuts & Cheatsheet
 
-Type `sam-setup-help` in your terminal anytime to print this quick reference card:
+Type `sam-setup-help` in your terminal anytime to print this interactive reference card:
 
 ### Tmux Multiplexer (Prefix: `Ctrl + a`)
 | Key Combination | Action |
@@ -262,8 +459,13 @@ Type `sam-setup-help` in your terminal anytime to print this quick reference car
 | **`lt`** | `eza --tree --level=2 --icons` | Quick 2-level directory tree view |
 | **`lg`** | `lazygit` | Interactive Git TUI (staging, commits, rebases, diffs) |
 | **`ld`** | `lazydocker` | Interactive Docker container and image manager |
-| **`spf`** | `superfile` | Graphical file manager with image previews |
+| **`y`** | `yazi` | Launch Yazi file manager with auto-cd on exit |
+| **`spf`** | `superfile` | Dual-pane modern TUI file manager |
+| **`tuios`** | `tuios` | Terminal workspace hub and launcher |
+| **`btop`** | `btop` | Catppuccin Mocha resource and process monitor |
 | **`vd <file>`** | `visidata <file>` | Open CSV/TSV/JSON/Parquet in spreadsheet wrangler |
+| **`jqp`** | `jqp` | Interactive live jq query playground |
+| **`kondo -n`** | `kondo -n` | Dry-run clean stale build artifacts (`node_modules`, `target`, `venv`) |
 | **`z <dir>`** | `zoxide <dir>` | Jump to matching directory by frecency |
 | **`Ctrl + r`** | `atuin search` | Search shell history with SQLite daemon engine |
 | **`Ctrl + t`** | `fzf-file-widget` | Fuzzy file search and insert into command line |
@@ -275,7 +477,7 @@ Type `sam-setup-help` in your terminal anytime to print this quick reference car
 Your environment comes with five purpose-built management utilities:
 
 ```
-sam-setup-check   ── 44-point automated health verification suite
+sam-setup-check   ── 53-point automated health verification suite
 sam-setup-doctor  ── Self-healing doctor that automatically repairs shims, TPM, & hooks
 sam-setup-help    ── Instant interactive cheatsheet of keybindings & commands
 sam-setup-update  ── One-command updater for Homebrew, mise, uv, Neovim, & dotfiles
@@ -283,7 +485,7 @@ sam-setup-restore ── One-command rollback to pre-installation backup state
 ```
 
 ### 1. Health Verification (`sam-setup-check`)
-Runs 44 non-destructive assertions validating system architecture, package managers, CLI utilities, runtime versions, fonts, and shell configuration syntax:
+Runs 53 non-destructive assertions validating system architecture, package managers, CLI utilities, AI coding agents, TUIs, runtime versions, fonts, and shell configuration syntax:
 ```bash
 sam-setup-check
 ```
@@ -293,7 +495,7 @@ If a network timeout interrupted a plugin installation or mise shims drifted, ru
 ```bash
 sam-setup-doctor
 ```
-The doctor automatically clones missing TPM plugins, reshimms mise paths, re-registers agent hooks, and displays `✨ Applied X automatic fix(es)`.
+The doctor automatically clones missing TPM plugins, reshimms mise paths, re-registers agent hooks, deploys missing Yazi plugins, and displays `✨ Applied X automatic fix(es)`.
 
 ### 3. One-Command Upgrades (`update-all` / `sam-setup-update`)
 Synchronizes your entire workstation in one coordinated pass:
@@ -304,6 +506,7 @@ update-all    # or: sam-setup-update
 * Upgrades Mise polyglot runtimes and global Node CLIs
 * Upgrades standalone Python tools via `uv tool upgrade --all`
 * Headlessly synchronizes Neovim Lazy plugins
+* Updates Yazi packages via `ya pkg upgrade`
 * Updates Tmux TPM plugins
 * Re-applies dotfiles cleanly via `chezmoi update`
 * Validates Zsh syntax post-update to prevent terminal lockouts

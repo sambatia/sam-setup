@@ -45,24 +45,36 @@ ${C_M}━━━ 2. MODERN CLI REPLACEMENTS ━━━━━━━━━━━━�
 
 ${C_M}━━━ 3. POWER TUIS & TOOLS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RST}
   ${C_C}Git:${C_RST}               ${C_B}lg${C_RST} (lazygit)  ·  ${C_B}gh dash${C_RST} (GitHub PR/Issue dashboard)
-  ${C_C}Docker:${C_RST}            ${C_B}ld${C_RST} (lazydocker)  ·  ${C_B}dive <image>${C_RST} (explore image layers)
-  ${C_C}Files:${C_RST}             ${C_B}yazi${C_RST} (graphical file manager)  ·  ${C_B}spf${C_RST} (superfile)
-  ${C_C}System:${C_RST}            ${C_B}btop${C_RST} (resource monitor)  ·  ${C_B}dust${C_RST} (disk usage tree)
+  ${C_C}Docker:${C_RST}            ${C_B}ld${C_RST} (lazygit for containers)  ·  ${C_B}dive <image>${C_RST} (explore image layers)
+  ${C_C}Files:${C_RST}             ${C_B}y${C_RST} / ${C_B}yazi${C_RST} (blazing async file manager with 12 plugins & kitty graphics)
+                     ${C_B}spf${C_RST} (superfile: modern dual-pane TUI file manager)
+  ${C_C}Workspace Hub:${C_RST}     ${C_B}tuios${C_RST} (terminal workspace & dashboard hub)
+  ${C_C}System Monitor:${C_RST}    ${C_B}btop${C_RST} (Catppuccin Mocha TUI: CPU/RAM/disks/network/processes)
   ${C_C}Data & APIs:${C_RST}       ${C_B}vd <file>${C_RST} (visidata tabular wrangler)  ·  ${C_B}jqp${C_RST} (jq playground)
-                     ${C_B}posting${C_RST} (TUI REST client)  ·  ${C_B}lazysql${C_RST} (database client)
-  ${C_C}Disk Cleanup:${C_RST}      ${C_B}kondo -n${C_RST} (dry-run clean stale node_modules/target/venv)
-  ${C_C}Network:${C_RST}           ${C_B}trip <host>${C_RST} (Trippy interactive network path & ping tracer)
+                     ${C_B}posting${C_RST} (TUI REST client)  ·  ${C_B}lazysql${C_RST} (database client)  ·  ${C_B}xh${C_RST} / ${C_B}hurl${C_RST}
+  ${C_C}Disk & Cache:${C_RST}      ${C_B}kondo -n${C_RST} (dry-run clean stale build artifacts)  ·  ${C_B}dust${C_RST} (graphical du)
+  ${C_C}Network:${C_RST}           ${C_B}trip <host>${C_RST} (Trippy interactive traceroute & ping)  ·  ${C_B}doggo${C_RST} (DNS client)
 
-${C_M}━━━ 4. AI & DEVELOPER ASSISTANTS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RST}
-  ${C_C}Claude Code:${C_RST}       ${C_B}claude${C_RST} (agentic engineering assistant)
-  ${C_C}Codex CLI:${C_RST}         ${C_B}codex${C_RST} (OpenAI terminal coding agent)
-  ${C_C}CLI LLM Filter:${C_RST}    ${C_B}cat error.log | llm "explain this failure"${C_RST} (pipes to local/cloud LLMs)
+${C_M}━━━ 4. AI CODING AGENTS & LLM PIPELINES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RST}
+  ${C_C}Claude Code:${C_RST}       ${C_B}claude${C_RST} (Anthropic's official agentic engineering CLI)
+  ${C_C}OpenAI Codex:${C_RST}      ${C_B}codex${C_RST} (terminal coding agent with gpt-6-astra & plan mode)
+  ${C_C}Antigravity CLI:${C_RST}   ${C_B}agy${C_RST} (Google Gemini 3 agentic CLI with deep lifecycle hooks)
+  ${C_C}CLI LLM Filter:${C_RST}    ${C_B}cat error.log | llm "explain this failure"${C_RST} (pipes to local/cloud models)
+  ${C_C}Agent Multiplexer:${C_RST} ${C_B}herdr${C_RST} (syncs agent sessions, topics, & Neovim navigation)
 
-${C_M}━━━ 5. LOCAL CUSTOMIZATION & UPDATES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RST}
+${C_M}━━━ 5. NEOVIM / LAZYVIM ESSENTIALS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RST}
+  ${C_C}Explorer:${C_RST}          ${C_B}<Space> e${C_RST} (Snacks file explorer)  ·  ${C_B}- ${C_RST} (Oil buffer filesystem)
+  ${C_C}Fuzzy Search:${C_RST}      ${C_B}<Space> ff${C_RST} (find files)  ·  ${C_B}<Space> sg${C_RST} (live ripgrep grep)
+  ${C_C}Diagnostics:${C_RST}       ${C_B}<Space> xx${C_RST} (Trouble diagnostics)  ·  ${C_B}[d / ]d${C_RST} (prev/next error)
+  ${C_C}AI In-Editor:${C_RST}      ${C_B}Ctrl + \\${C_RST} (CodeCompanion chat)  ·  ${C_B}<Space> a${C_RST} (AI actions)
+  ${C_C}Code Navigation:${C_RST}   ${C_B}s${C_RST} (Flash 2-char jump)  ·  ${C_B}K${C_RST} (LSP hover)  ·  ${C_B}gd${C_RST} (goto definition)
+  ${C_C}Git In-Editor:${C_RST}     ${C_B}<Space> gg${C_RST} (lazygit)  ·  ${C_B}[h / ]h${C_RST} (prev/next git hunk)
+
+${C_M}━━━ 6. LOCAL CUSTOMIZATION & UPDATES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RST}
   ${C_C}Custom Aliases:${C_RST}    Put personal aliases/env vars in: ${C_Y}~/.zshrc.local${C_RST}
   ${C_C}Ghostty Tweaks:${C_RST}    Put custom font/dimension overrides in: ${C_Y}~/.config/ghostty/config.local${C_RST}
   ${C_C}Update Everything:${C_RST} Run ${C_G}update-all${C_RST} (coordinates Homebrew, mise, uv, Neovim, & dotfiles)
-  ${C_C}Verify Health:${C_RST}     Run ${C_G}sam-setup-check${C_RST} (41-point diagnostic check)
+  ${C_C}Verify Health:${C_RST}     Run ${C_G}sam-setup-check${C_RST} (53-point automated health check)
   ${C_C}Rollback Changes:${C_RST}  Run ${C_G}sam-setup-restore${C_RST} (reverts dotfiles to pre-install backups)
 
 EOF

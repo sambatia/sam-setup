@@ -206,12 +206,17 @@ main() {
     warn "mise not found on PATH; skipping runtime installation."
   fi
 
-  # Setup Neovim LazyVim
-  step "4/6: Initializing Neovim LazyVim plugins"
+  # Setup Neovim LazyVim & Yazi File Manager
+  step "4/6: Initializing Neovim LazyVim & Yazi plugins"
   if command -v nvim >/dev/null 2>&1; then
-    say "Pre-syncing plugins headlessly…"
+    say "Pre-syncing Neovim plugins headlessly…"
     nvim --headless '+Lazy! sync' +qa >/dev/null 2>&1 || true
     ok "Neovim plugins synchronized"
+  fi
+  if command -v ya >/dev/null 2>&1; then
+    say "Deploying Yazi file manager plugins…"
+    ya pkg install >/dev/null 2>&1 || true
+    ok "Yazi plugins deployed"
   fi
 
   # Setup Tmux TPM & Herdr

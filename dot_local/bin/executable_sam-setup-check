@@ -73,7 +73,7 @@ for pm in brew mise uv; do
 done
 
 # 3. Core Shell & Modern Utilities
-REQUIRED_TOOLS="zsh git tmux herdr nvim starship zoxide atuin eza bat rg fd fzf lazygit btop yazi spf just gh llm jqp vd lazysql mitmproxy kondo sam-setup-help sam-setup-doctor sam-setup-update"
+REQUIRED_TOOLS="zsh git tmux herdr nvim starship zoxide atuin eza bat rg fd fzf lazygit btop yazi spf tuios just gh llm jqp vd lazysql mitmproxy kondo sam-setup-help sam-setup-doctor sam-setup-update"
 for tool in $REQUIRED_TOOLS; do
   if command -v "$tool" >/dev/null 2>&1; then
     pass "CLI utility: $tool is ready"
@@ -81,6 +81,57 @@ for tool in $REQUIRED_TOOLS; do
     fail "CLI utility: $tool is missing"
   fi
 done
+
+# 3b. AI Coding Agent Ecosystem
+if command -v claude >/dev/null 2>&1; then
+  pass "AI Agent: Claude Code CLI is ready ($(claude --version 2>/dev/null | head -1 || echo 'installed'))"
+else
+  warn "AI Agent: Claude Code CLI is missing (install via: brew install --cask claude-code@latest)"
+fi
+
+if command -v codex >/dev/null 2>&1; then
+  pass "AI Agent: OpenAI Codex CLI is ready"
+else
+  warn "AI Agent: Codex CLI is missing (install via: mise use -g npm:@openai/codex)"
+fi
+
+if command -v agy >/dev/null 2>&1; then
+  pass "AI Agent: Antigravity CLI (agy) is ready ($(agy --version 2>/dev/null || echo 'installed'))"
+else
+  warn "AI Agent: agy is not on PATH (managed via Antigravity IDE or ~/.local/bin/agy)"
+fi
+
+# 3c. Terminal TUIs & File Managers
+if command -v spf >/dev/null 2>&1; then
+  pass "TUI File Manager: Superfile (spf) is ready"
+else
+  fail "TUI File Manager: Superfile (spf) is missing"
+fi
+
+if command -v tuios >/dev/null 2>&1; then
+  pass "TUI Workspace Hub: TUIOS is ready"
+else
+  fail "TUI Workspace Hub: TUIOS is missing"
+fi
+
+if command -v btop >/dev/null 2>&1; then
+  pass "TUI System Monitor: btop is ready"
+else
+  fail "TUI System Monitor: btop is missing"
+fi
+
+if [ -d "$HOME/.config/yazi/plugins" ] && [ "$(ls -A "$HOME/.config/yazi/plugins" 2>/dev/null)" ]; then
+  pass "Yazi plugins installed ($(ls "$HOME/.config/yazi/plugins" | wc -l | tr -d ' ') plugins active)"
+else
+  warn "Yazi plugins missing in ~/.config/yazi/plugins (run: ya pkg install)"
+fi
+
+# 3d. Neovim / LazyVim Ecosystem
+if [ -d "$HOME/.config/nvim/lua/plugins" ]; then
+  pass "LazyVim custom plugins configured ($(ls "$HOME/.config/nvim/lua/plugins" | wc -l | tr -d ' ') plugin specs present)"
+else
+  warn "LazyVim plugin specifications missing at ~/.config/nvim/lua/plugins"
+fi
 
 # 4. Runtimes & Languages
 if command -v node >/dev/null 2>&1; then
