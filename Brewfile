@@ -53,6 +53,7 @@ brew "viddy"
 brew "yazi"
 brew "superfile"
 brew "tuios"
+brew "kondo"
 
 # ── Git & Diffing ─────────────────────────────────────────────────────────────
 brew "git"
