@@ -2,7 +2,7 @@
 set shell := ["bash", "-cu"]
 
 # Plain (non-template) shell scripts we lint.
-SCRIPTS := "bootstrap.sh tests/run-bootstrap-tests.sh .chezmoiscripts/run_once_before_05-backup-existing.sh .chezmoiscripts/run_after_20-ssh-key.sh .chezmoiscripts/run_once_after_30-tmux-tpm.sh dot_local/bin/executable_sam-setup-restore"
+SCRIPTS := "bootstrap.sh tests/run-bootstrap-tests.sh .chezmoiscripts/run_once_before_05-backup-existing.sh .chezmoiscripts/run_after_20-ssh-key.sh .chezmoiscripts/run_once_after_30-tmux-tpm.sh dot_local/bin/executable_sam-setup-restore dot_local/bin/executable_sam-setup-check dot_local/bin/executable_update-all"
 
 default:
     @just --list --unsorted

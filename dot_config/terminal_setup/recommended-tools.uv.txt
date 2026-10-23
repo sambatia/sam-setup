@@ -1,0 +1,4 @@
+# Standalone Python tools explicitly selected for this workstation.
+# uv tool receipts register these with update-all's existing uv section.
+# textual-dev owns the textual command and the current Textual/Rich libraries.
+textual-dev

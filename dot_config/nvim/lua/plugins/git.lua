@@ -1,20 +1,45 @@
 return {
+  -- Actively maintained, command-compatible continuation of Diffview.
   {
-    'lewis6991/gitsigns.nvim',
-    event = { 'BufReadPre', 'BufNewFile' },
+    "dlyongemallo/diffview-plus.nvim",
+    version = "*",
+    cmd = {
+      "DiffviewOpen",
+      "DiffviewClose",
+      "DiffviewFileHistory",
+      "DiffviewToggleFiles",
+      "DiffviewFocusFiles",
+      "DiffviewRefresh",
+    },
+    keys = {
+      { "<leader>gvo", "<cmd>DiffviewOpen<cr>", desc = "Open Diffview" },
+      { "<leader>gvf", "<cmd>DiffviewFileHistory %<cr>", desc = "Current file history (Diffview)" },
+      { "<leader>gvh", "<cmd>DiffviewFileHistory<cr>", desc = "Repository history (Diffview)" },
+      { "<leader>gvx", "<cmd>DiffviewClose<cr>", desc = "Close Diffview" },
+    },
     opts = {
-      on_attach = function(buf)
-        local gs = require('gitsigns')
-        local function m(keys, fn, desc)
-          vim.keymap.set('n', keys, fn, { buffer = buf, desc = 'Git: ' .. desc })
-        end
-        m(']h', gs.next_hunk, 'Next hunk')
-        m('[h', gs.prev_hunk, 'Prev hunk')
-        m('<leader>hs', gs.stage_hunk, 'Stage hunk')
-        m('<leader>hr', gs.reset_hunk, 'Reset hunk')
-        m('<leader>hp', gs.preview_hunk, 'Preview hunk')
-        m('<leader>hb', function() gs.blame_line({ full = true }) end, 'Blame line')
-      end,
+      enhanced_diff_hl = true,
+      view = {
+        merge_tool = {
+          layout = "diff3_mixed",
+          disable_diagnostics = true,
+        },
+      },
+    },
+  },
+
+  -- LazyVim's Octo extra owns the complete PR/issue/review workflow. Preserve
+  -- Telescope's Git-stash mapping and relocate only Octo's overlapping search.
+  {
+    "pwntester/octo.nvim",
+    opts = {
+      -- LazyVim enables Projects v2 by default, but issue/PR/review workflows
+      -- do not require its additional GitHub token scope.
+      default_to_projects_v2 = false,
+    },
+    keys = {
+      { "<leader>gS", false },
+      { "<leader>go", "<cmd>Octo search<cr>", desc = "Search GitHub (Octo)" },
     },
   },
 }

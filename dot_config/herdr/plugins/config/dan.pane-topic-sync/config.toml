@@ -1,0 +1,8 @@
+# Keep automatic labels compact while preserving any manual pane or tab names.
+sync_panes = true
+sync_tabs = true
+respect_manual_names = true
+tab_source = "first"
+max_label_length = 60
+tab_format = "{topic}"
+pane_format = "{topic}"

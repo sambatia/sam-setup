@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/razajamil/herdr-plugin-workspace-manager/main/schema.json
+# This layout is available on demand but has no global default or workspace
+# mapping, so installation cannot rebuild an existing or newly opened tab.
+layouts:
+  - id: shell
+    tabs:
+      - title: work
+        panes:
+          - title: shell
+
+# Add reviewed workspaces with a defaultLayout here when automatic application
+# is desired. The first tab of an applied layout replaces the existing tab.

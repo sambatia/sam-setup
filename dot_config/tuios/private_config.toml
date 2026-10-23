@@ -1,0 +1,10 @@
+# Local, manually launched profile. Package updates are owned by Homebrew.
+
+[startup]
+tiled = false
+daemon = false
+
+[agents]
+enabled = false
+herdr_protocol = "off"
+host_program_status = "off"

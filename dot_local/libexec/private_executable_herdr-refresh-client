@@ -1,0 +1,517 @@
+#!/bin/bash
+
+# Resolve a Herdr CLI compatible with the persistent server without restarting it.
+
+set -u -o pipefail
+
+download_dir=""
+download_parent=""
+cache_temp=""
+cache_temp_parent=""
+
+cleanup_download() {
+	if [[ -n "$download_dir" && -n "$download_parent" &&
+		"${download_dir%/*}" == "$download_parent" &&
+		"${download_dir##*/}" == .download.* &&
+		-d "$download_dir" && ! -L "$download_dir" ]]; then
+		/bin/rm -f -- "${download_dir}/release.json" "${download_dir}/herdr"
+		/bin/rmdir "$download_dir" 2>/dev/null || true
+	fi
+}
+
+cleanup_cache_temp() {
+	if [[ -n "$cache_temp" && -n "$cache_temp_parent" &&
+		"${cache_temp%/*}" == "$cache_temp_parent" &&
+		"${cache_temp##*/}" == .herdr.* &&
+		-f "$cache_temp" && ! -L "$cache_temp" ]]; then
+		/bin/rm -f -- "$cache_temp"
+	fi
+}
+
+cleanup() {
+	cleanup_download
+	cleanup_cache_temp
+}
+
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+usage() {
+	printf '%s\n' \
+		'Usage: herdr-refresh-client (--read-only | --ensure-cache) [--session NAME] [--quiet]'
+}
+
+fail() {
+	printf 'herdr-refresh: %s\n' "$1" >&2
+	exit 2
+}
+
+stat_uid() {
+	local value
+
+	if value="$(/usr/bin/stat -f '%u' "$1" 2>/dev/null)"; then
+		printf '%s\n' "$value"
+		return 0
+	fi
+	/usr/bin/stat -c '%u' "$1" 2>/dev/null
+}
+
+stat_mode() {
+	local value
+
+	if value="$(/usr/bin/stat -f '%Lp' "$1" 2>/dev/null)"; then
+		printf '%s\n' "$value"
+		return 0
+	fi
+	/usr/bin/stat -c '%a' "$1" 2>/dev/null
+}
+
+# Herdr renames the labels in its human-readable `status` output between
+# releases (0.9.0 turned `protocol`/`compatible` into `private_protocol`/
+# `private_protocol_compatible`), which silently broke label scraping. The
+# --json object has carried stable key names since 0.7.5, so parse that.
+# Prints an empty string for a missing or null key.
+status_json_field() {
+	local key="$1"
+
+	command jq -r --arg key "$key" '
+		if type == "object" and has($key) and .[$key] != null then
+			.[$key] | tostring
+		else
+			""
+		end
+	' 2>/dev/null
+}
+
+client_identity_matches() {
+	local candidate="$1"
+	local expected_version="$2"
+	local expected_protocol="$3"
+	local output
+	local actual_version
+	local actual_protocol
+
+	output="$(command "$candidate" status client --json 2>/dev/null)" || return 1
+	actual_version="$(printf '%s\n' "$output" | status_json_field version)"
+	actual_protocol="$(printf '%s\n' "$output" | status_json_field protocol)"
+	[[ "$actual_version" == "$expected_version" &&
+		"$actual_protocol" == "$expected_protocol" ]]
+}
+
+validate_cached_client() {
+	local candidate="$1"
+	local expected_version="$2"
+	local expected_protocol="$3"
+	local current_uid
+	local candidate_uid
+	local candidate_mode
+
+	[[ -f "$candidate" && ! -L "$candidate" && -x "$candidate" ]] || return 1
+	current_uid="$(/usr/bin/id -u)" || return 1
+	candidate_uid="$(stat_uid "$candidate")" || return 1
+	candidate_mode="$(stat_mode "$candidate")" || return 1
+	[[ "$candidate_uid" == "$current_uid" && "$candidate_mode" == 700 ]] || return 1
+	client_identity_matches "$candidate" "$expected_version" "$expected_protocol"
+}
+
+private_directory_is_valid() {
+	local directory="$1"
+	local current_uid
+	local directory_uid
+	local directory_mode
+
+	[[ -d "$directory" && ! -L "$directory" ]] || return 1
+	current_uid="$(/usr/bin/id -u)" || return 1
+	directory_uid="$(stat_uid "$directory")" || return 1
+	directory_mode="$(stat_mode "$directory")" || return 1
+	[[ "$directory_uid" == "$current_uid" && "$directory_mode" == 700 ]]
+}
+
+trusted_directory_component() {
+	local directory="$1"
+	local current_uid
+	local directory_uid
+	local directory_mode
+	local group_and_world_modes
+
+	[[ -d "$directory" && ! -L "$directory" ]] || return 1
+	current_uid="$(/usr/bin/id -u)" || return 1
+	directory_uid="$(stat_uid "$directory")" || return 1
+	directory_mode="$(stat_mode "$directory")" || return 1
+	[[ "$directory_uid" == 0 || "$directory_uid" == "$current_uid" ]] || return 1
+	[[ "$directory_mode" =~ ^[0-7]{3,4}$ ]] || return 1
+	group_and_world_modes="${directory_mode#"${directory_mode%??}"}"
+	case "$group_and_world_modes" in
+	*[2367]*) return 1 ;;
+	esac
+	return 0
+}
+
+path_is_normal_absolute() {
+	local path="$1"
+
+	[[ "$path" == /* && "$path" != / &&
+		"$path" != *'//'* &&
+		"$path" != */. && "$path" != */.. &&
+		"$path" != *'/./'* && "$path" != *'/../'* ]]
+}
+
+trusted_directory_chain() {
+	local path="$1"
+	local current_path=""
+	local component
+	local -a components
+
+	path_is_normal_absolute "$path" || return 1
+	trusted_directory_component / || return 1
+	IFS='/' read -r -a components <<<"${path#/}"
+	for component in "${components[@]}"; do
+		[[ -n "$component" ]] || return 1
+		current_path="${current_path}/${component}"
+		trusted_directory_component "$current_path" || return 1
+	done
+	return 0
+}
+
+ensure_trusted_directory_chain() {
+	local path="$1"
+	local current_path=""
+	local component
+	local -a components
+
+	path_is_normal_absolute "$path" || return 1
+	trusted_directory_component / || return 1
+	IFS='/' read -r -a components <<<"${path#/}"
+	umask 077
+	for component in "${components[@]}"; do
+		[[ -n "$component" ]] || return 1
+		current_path="${current_path}/${component}"
+		if [[ -L "$current_path" || (-e "$current_path" && ! -d "$current_path") ]]; then
+			return 1
+		fi
+		if [[ ! -d "$current_path" ]]; then
+			/bin/mkdir "$current_path" || return 1
+			/bin/chmod 700 "$current_path" || return 1
+		fi
+		trusted_directory_component "$current_path" || return 1
+	done
+	return 0
+}
+
+ensure_private_directory() {
+	local directory="$1"
+
+	if [[ -L "$directory" || (-e "$directory" && ! -d "$directory") ]]; then
+		return 1
+	fi
+	umask 077
+	/bin/mkdir -p "$directory" || return 1
+	/bin/chmod 700 "$directory" || return 1
+	private_directory_is_valid "$directory"
+}
+
+cache_current_client() {
+	local source_client="$1"
+	local expected_version="$2"
+	local expected_protocol="$3"
+	local client_output
+	local client_version=""
+	local client_protocol=""
+	local version_dir
+	local destination
+
+	if client_output="$(command "$source_client" status client --json 2>/dev/null)"; then
+		client_version="$(printf '%s\n' "$client_output" | status_json_field version)"
+		client_protocol="$(printf '%s\n' "$client_output" | status_json_field protocol)"
+	fi
+	if [[ "$client_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ &&
+		"$client_protocol" =~ ^[0-9]+$ ]]; then
+		expected_version="$client_version"
+		expected_protocol="$client_protocol"
+	fi
+	version_dir="${cache_root}/${expected_version}-p${expected_protocol}"
+	destination="${version_dir}/herdr"
+
+	ensure_trusted_directory_chain "$cache_anchor" || return 1
+	ensure_private_directory "$cache_project_root" || return 1
+	ensure_private_directory "$cache_root" || return 1
+	ensure_private_directory "$version_dir" || return 1
+	if validate_cached_client "$destination" "$expected_version" "$expected_protocol"; then
+		return 0
+	fi
+	cache_temp_parent="$version_dir"
+	cache_temp="$(mktemp "${version_dir}/.herdr.XXXXXX")" || return 1
+	if ! /bin/cp -L "$source_client" "$cache_temp" ||
+		! /bin/chmod 700 "$cache_temp" ||
+		! validate_cached_client "$cache_temp" "$expected_version" "$expected_protocol" ||
+		! /bin/mv -f "$cache_temp" "$destination"; then
+		cleanup_cache_temp
+		cache_temp=""
+		cache_temp_parent=""
+		return 1
+	fi
+	cache_temp=""
+	cache_temp_parent=""
+	return 0
+}
+
+platform_asset_name() {
+	local operating_system
+	local architecture
+
+	operating_system="$(/usr/bin/uname -s)" || return 1
+	architecture="$(/usr/bin/uname -m)" || return 1
+	case "${operating_system}:${architecture}" in
+	Darwin:arm64 | Darwin:aarch64)
+		printf '%s\n' 'herdr-macos-aarch64'
+		;;
+	Darwin:x86_64 | Darwin:amd64)
+		printf '%s\n' 'herdr-macos-x86_64'
+		;;
+	Linux:aarch64 | Linux:arm64)
+		printf '%s\n' 'herdr-linux-aarch64'
+		;;
+	Linux:x86_64 | Linux:amd64)
+		printf '%s\n' 'herdr-linux-x86_64'
+		;;
+	*)
+		return 1
+		;;
+	esac
+}
+
+sha256_file() {
+	local path="$1"
+
+	if command -v shasum >/dev/null 2>&1; then
+		command shasum -a 256 "$path" | /usr/bin/awk '{print $1}'
+		return "${PIPESTATUS[0]}"
+	fi
+	if command -v sha256sum >/dev/null 2>&1; then
+		command sha256sum "$path" | /usr/bin/awk '{print $1}'
+		return "${PIPESTATUS[0]}"
+	fi
+	return 127
+}
+
+download_compatible_client() {
+	local expected_version="$1"
+	local expected_protocol="$2"
+	local version_dir="${cache_root}/${expected_version}-p${expected_protocol}"
+	local destination="${version_dir}/herdr"
+	local asset_name
+	local api_url
+	local expected_asset_url
+	local curl_binary
+	local metadata_file
+	local downloaded_file
+	local asset_record
+	local asset_url
+	local digest_label
+	local expected_digest
+	local expected_size
+	local actual_digest
+	local actual_size
+
+	command -v jq >/dev/null 2>&1 || fail 'required command not found: jq'
+	curl_binary="$(command -v curl 2>/dev/null)" || fail 'required command not found: curl'
+	asset_name="$(platform_asset_name)" || fail 'unsupported platform for Herdr compatibility client'
+	api_url="https://api.github.com/repos/herdrdev/herdr/releases/tags/v${expected_version}"
+	expected_asset_url="https://github.com/herdrdev/herdr/releases/download/v${expected_version}/${asset_name}"
+
+	ensure_trusted_directory_chain "$cache_anchor" || fail 'compatibility client cache anchor is unsafe'
+	ensure_private_directory "$cache_project_root" || fail 'could not secure compatibility client cache root'
+	ensure_private_directory "$cache_root" || fail 'could not secure compatibility client cache'
+	ensure_private_directory "$version_dir" || fail 'could not secure compatibility client version cache'
+	download_parent="$version_dir"
+	download_dir="$(mktemp -d "${version_dir}/.download.XXXXXX")" ||
+		fail 'could not create compatibility client download directory'
+	/bin/chmod 700 "$download_dir" || fail 'could not secure compatibility client download directory'
+	metadata_file="${download_dir}/release.json"
+	downloaded_file="${download_dir}/herdr"
+
+	if ! command "$curl_binary" --proto '=https' --proto-redir '=https' \
+		-fsSL --retry 3 --connect-timeout 10 --max-time 30 \
+		-o "$metadata_file" "$api_url"; then
+		/bin/rm -f -- "$metadata_file" "$downloaded_file"
+		/bin/rmdir "$download_dir" 2>/dev/null || true
+		fail "could not fetch official Herdr v${expected_version} release metadata"
+	fi
+	asset_record="$(command jq -er \
+		--arg tag "v${expected_version}" \
+		--arg asset "$asset_name" '
+        select(.tag_name == $tag and .draft == false) |
+        [.assets[] |
+          select(
+            .name == $asset and
+            .state == "uploaded" and
+            (.browser_download_url | type == "string") and
+            (.digest | type == "string") and
+            (.size | type == "number" and floor == . and . > 0)
+          )
+        ] |
+        if length == 1 then
+          .[0] | [.browser_download_url, .digest, (.size | tostring)] | @tsv
+        else
+          error("expected exactly one matching release asset")
+        end
+      ' "$metadata_file" 2>/dev/null)" || {
+		/bin/rm -f -- "$metadata_file" "$downloaded_file"
+		/bin/rmdir "$download_dir" 2>/dev/null || true
+		fail "official Herdr v${expected_version} release metadata was invalid"
+	}
+	IFS=$'\t' read -r asset_url digest_label expected_size <<<"$asset_record"
+	[[ "$asset_url" == "$expected_asset_url" ]] || {
+		/bin/rm -f -- "$metadata_file" "$downloaded_file"
+		/bin/rmdir "$download_dir" 2>/dev/null || true
+		fail 'official Herdr release metadata returned an unexpected asset URL'
+	}
+	[[ "$digest_label" =~ ^sha256:([a-f0-9]{64})$ ]] || {
+		/bin/rm -f -- "$metadata_file" "$downloaded_file"
+		/bin/rmdir "$download_dir" 2>/dev/null || true
+		fail 'official Herdr release asset did not provide a valid SHA-256 digest'
+	}
+	expected_digest="${BASH_REMATCH[1]}"
+	[[ "$expected_size" =~ ^[1-9][0-9]*$ ]] || {
+		/bin/rm -f -- "$metadata_file" "$downloaded_file"
+		/bin/rmdir "$download_dir" 2>/dev/null || true
+		fail 'official Herdr release asset did not provide a valid size'
+	}
+
+	if ! command "$curl_binary" --proto '=https' --proto-redir '=https' \
+		-fsSL --retry 3 --connect-timeout 10 --max-time 120 \
+		-o "$downloaded_file" "$asset_url"; then
+		/bin/rm -f -- "$metadata_file" "$downloaded_file"
+		/bin/rmdir "$download_dir" 2>/dev/null || true
+		fail "could not download official Herdr v${expected_version} compatibility client"
+	fi
+	actual_size="$(/usr/bin/wc -c <"$downloaded_file" | /usr/bin/tr -d ' ')" ||
+		fail 'could not measure downloaded Herdr compatibility client'
+	actual_digest="$(sha256_file "$downloaded_file")" ||
+		fail 'could not hash downloaded Herdr compatibility client'
+	if [[ "$actual_size" != "$expected_size" || "$actual_digest" != "$expected_digest" ]]; then
+		/bin/rm -f -- "$metadata_file" "$downloaded_file"
+		/bin/rmdir "$download_dir" 2>/dev/null || true
+		fail 'downloaded Herdr compatibility client failed integrity verification'
+	fi
+	/bin/chmod 700 "$downloaded_file" || fail 'could not secure downloaded Herdr compatibility client'
+	client_identity_matches "$downloaded_file" "$expected_version" "$expected_protocol" ||
+		fail 'downloaded Herdr compatibility client reported the wrong version or protocol'
+	/bin/mv -f "$downloaded_file" "$destination" ||
+		fail 'could not publish downloaded Herdr compatibility client'
+	cleanup_download
+	download_dir=""
+	download_parent=""
+	validate_cached_client "$destination" "$expected_version" "$expected_protocol" ||
+		fail 'published Herdr compatibility client failed validation'
+	if ((quiet == 0)); then
+		printf 'herdr-refresh: downloaded and verified Herdr %s compatibility client\n' \
+			"$expected_version" >&2
+	fi
+}
+
+mode=""
+session_name=""
+quiet=0
+while (($# > 0)); do
+	case "$1" in
+	--read-only | --ensure-cache)
+		[[ -z "$mode" ]] || fail 'choose exactly one resolver mode'
+		mode="$1"
+		shift
+		;;
+	--session)
+		(($# >= 2)) || fail '--session requires a name'
+		session_name="$2"
+		[[ "$session_name" =~ ^[A-Za-z0-9._-]{1,64}$ ]] || fail 'invalid session name'
+		shift 2
+		;;
+	--quiet)
+		quiet=1
+		shift
+		;;
+	--help | -h)
+		usage
+		exit 0
+		;;
+	*)
+		fail "unknown argument: $1"
+		;;
+	esac
+done
+[[ -n "$mode" ]] || fail 'resolver mode is required'
+
+current_herdr="$(command -v herdr 2>/dev/null)" || fail 'required command not found: herdr'
+command -v jq >/dev/null 2>&1 || fail 'required command not found: jq'
+if [[ -n "$session_name" ]]; then
+	server_status="$(command "$current_herdr" --session "$session_name" status server --json 2>/dev/null)" ||
+		fail "could not inspect Herdr session: $session_name"
+else
+	server_status="$(command "$current_herdr" status server --json 2>/dev/null)" ||
+		fail 'could not inspect the Herdr server'
+fi
+printf '%s\n' "$server_status" | command jq -e 'type == "object"' >/dev/null 2>&1 ||
+	fail 'Herdr server reported an invalid status document'
+
+server_state="$(printf '%s\n' "$server_status" | status_json_field status)"
+server_version="$(printf '%s\n' "$server_status" | status_json_field version)"
+server_protocol="$(printf '%s\n' "$server_status" | status_json_field protocol)"
+compatible="$(printf '%s\n' "$server_status" | status_json_field compatible)"
+
+case "$server_state" in
+stopped | not_running)
+	printf '%s\n' "$current_herdr"
+	exit 0
+	;;
+running) ;;
+*) fail 'Herdr server reported an invalid status' ;;
+esac
+[[ "$server_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] ||
+	fail 'running Herdr server reported an invalid version'
+[[ "$server_protocol" =~ ^[0-9]+$ ]] ||
+	fail 'running Herdr server reported an invalid protocol'
+[[ "$compatible" =~ ^(true|false)$ ]] ||
+	fail 'running Herdr server reported an invalid compatibility status'
+
+if [[ -n "${XDG_CACHE_HOME:-}" ]]; then
+	[[ "$XDG_CACHE_HOME" == /* ]] || fail 'XDG_CACHE_HOME must be an absolute path'
+	cache_anchor="${XDG_CACHE_HOME%/}"
+else
+	[[ -n "${HOME:-}" && "$HOME" == /* ]] || fail 'HOME must be an absolute path'
+	cache_anchor="${HOME%/}/.cache"
+fi
+cache_project_root="${cache_anchor}/herdr-refresh"
+cache_root="${cache_project_root}/clients"
+cached_dir="${cache_root}/${server_version}-p${server_protocol}"
+cached_client="${cached_dir}/herdr"
+
+if [[ "$compatible" == true ]]; then
+	if [[ "$mode" == --ensure-cache ]] &&
+		! cache_current_client "$current_herdr" "$server_version" "$server_protocol"; then
+		printf 'herdr-refresh: warning: could not cache Herdr %s compatibility client\n' \
+			"$server_version" >&2
+	fi
+	printf '%s\n' "$current_herdr"
+	exit 0
+fi
+
+if trusted_directory_chain "$cache_anchor" &&
+	private_directory_is_valid "$cache_project_root" &&
+	private_directory_is_valid "$cache_root" &&
+	private_directory_is_valid "$cached_dir" &&
+	validate_cached_client "$cached_client" "$server_version" "$server_protocol"; then
+	if ((quiet == 0)); then
+		printf 'herdr-refresh: using cached Herdr %s client for running protocol %s server\n' \
+			"$server_version" "$server_protocol" >&2
+	fi
+	printf '%s\n' "$cached_client"
+	exit 0
+fi
+
+if [[ "$mode" == --read-only ]]; then
+	fail "no validated Herdr ${server_version} compatibility client is cached; run refresh once without --dry-run"
+fi
+download_compatible_client "$server_version" "$server_protocol"
+printf '%s\n' "$cached_client"

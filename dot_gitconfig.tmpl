@@ -3,7 +3,40 @@
 	email = {{ .email }}
 [init]
 	defaultBranch = main
-[pull]
-	rebase = true
+[diff]
+	colorMoved = zebra
+[core]
+	autocrlf = input
+	editor = nvim
+	pager = delta
+	excludesfile = ~/.gitignore_global
 [push]
 	autoSetupRemote = true
+[pull]
+	rebase = false
+[rerere]
+	enabled = true
+[delta]
+	side-by-side = true
+	navigate = true
+	line-numbers = true
+	syntax-theme = Catppuccin Mocha
+[fetch]
+	prune = true
+[interactive]
+	diffFilter = delta --color-only
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
+[alias]
+	gs = status
+	gl = log --oneline -10
+	ddiff = -c core.pager=delta diff
+	dshow = -c core.pager=delta show
+	dlog = -c core.pager=delta log -p
+	hdiff = -c core.pager="hunk pager" diff
+	hshow = -c core.pager="hunk pager" show
+	hlog = -c core.pager="hunk pager" log -p
+	review = "!f() { if command -v hunk >/dev/null 2>&1; then if git rev-parse --verify HEAD >/dev/null 2>&1; then hunk diff HEAD; else hunk diff; fi; else git diff; fi; }; f"

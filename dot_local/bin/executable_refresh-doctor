@@ -1,0 +1,498 @@
+#!/bin/bash
+
+# Persist bounded, redacted Herdr refresh failures and run share-safe,
+# non-mutating health checks.
+
+set -u -o pipefail
+
+stat_uid() {
+	local value
+
+	if value="$(/usr/bin/stat -f '%u' "$1" 2>/dev/null)"; then
+		printf '%s\n' "$value"
+		return 0
+	fi
+	/usr/bin/stat -c '%u' "$1" 2>/dev/null
+}
+
+stat_mode() {
+	local value
+
+	if value="$(/usr/bin/stat -f '%Lp' "$1" 2>/dev/null)"; then
+		printf '%s\n' "$value"
+		return 0
+	fi
+	/usr/bin/stat -c '%a' "$1" 2>/dev/null
+}
+
+usage() {
+	cat <<'EOF'
+Usage: refresh-doctor
+
+Run read-only Herdr refresh health checks and show the latest redacted failure.
+EOF
+}
+
+fail_usage() {
+	printf 'refresh-doctor: %s\n' "$1" >&2
+	exit 2
+}
+
+is_nonnegative_integer() {
+	[[ "$1" =~ ^[0-9]+$ ]]
+}
+
+get_client_version() {
+	local client_output
+
+	if ! command -v herdr >/dev/null 2>&1; then
+		printf '%s\n' 'unavailable'
+		return 1
+	fi
+	client_output="$(command herdr --version 2>/dev/null)" || client_output=""
+	if [[ "$client_output" =~ ^herdr[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?)$ ]]; then
+		printf '%s\n' "${BASH_REMATCH[1]}"
+		return 0
+	fi
+	printf '%s\n' 'unavailable'
+	return 1
+}
+
+resolve_state_dir() {
+	local state_root
+
+	if [[ -n "${XDG_STATE_HOME:-}" && "$XDG_STATE_HOME" == /* ]]; then
+		state_root="$XDG_STATE_HOME"
+	else
+		if [[ -z "${HOME:-}" || "$HOME" != /* ]]; then
+			printf '%s\n' 'refresh-doctor: HOME must be an absolute path' >&2
+			return 2
+		fi
+		state_root="${HOME}/.local/state"
+	fi
+	printf '%s/herdr-refresh\n' "${state_root%/}"
+}
+
+validate_private_directory() {
+	local directory="$1"
+	local current_uid
+	local directory_uid
+	local directory_mode
+
+	if [[ -L "$directory" || (-e "$directory" && ! -d "$directory") ]]; then
+		printf '%s\n' 'refresh-doctor: unsafe diagnostic directory' >&2
+		return 2
+	fi
+	umask 077
+	if ! /bin/mkdir -p "$directory" || ! /bin/chmod 700 "$directory"; then
+		printf '%s\n' 'refresh-doctor: could not secure diagnostic directory' >&2
+		return 2
+	fi
+	if ! current_uid="$(/usr/bin/id -u)" ||
+		! directory_uid="$(stat_uid "$directory")" ||
+		! directory_mode="$(stat_mode "$directory")" ||
+		[[ "$directory_uid" != "$current_uid" || "$directory_mode" != 700 ]]; then
+		printf '%s\n' 'refresh-doctor: diagnostic directory must be private' >&2
+		return 2
+	fi
+}
+
+rotate_records() {
+	local state_dir="$1"
+	local record
+	local record_count=0
+
+	while IFS= read -r record; do
+		[[ -n "$record" ]] || continue
+		((record_count += 1))
+		if ((record_count > 10)); then
+			/bin/rm -f -- "$record"
+		fi
+	done < <(
+		/usr/bin/find "$state_dir" -maxdepth 1 -type f \
+			-name 'failure-*.json' -print | /usr/bin/sort -r
+	)
+}
+
+record_failure() {
+	local component=""
+	local exit_status=""
+	local discovered=0
+	local eligible=0
+	local excluded=0
+	local skipped=0
+	local refreshed=0
+	local failed=0
+	local value
+	local state_dir
+	local reasons_json
+	local client_version="unavailable"
+	local recorded_at
+	local filename_timestamp
+	local record_tmp=""
+	local record_file
+	local record_uid
+	local record_mode
+	local current_uid
+	local suffix
+	local -a reasons
+	reasons=("__sentinel__")
+
+	while (($# > 0)); do
+		case "$1" in
+		--component)
+			(($# >= 2)) || fail_usage '--component requires a value'
+			component="$2"
+			shift 2
+			;;
+		--reason)
+			(($# >= 2)) || fail_usage '--reason requires a value'
+			if [[ ! "$2" =~ ^[a-z0-9-]{1,64}$ ]]; then
+				fail_usage 'invalid reason'
+			fi
+			reasons+=("$2")
+			shift 2
+			;;
+		--exit-status)
+			(($# >= 2)) || fail_usage '--exit-status requires a value'
+			exit_status="$2"
+			shift 2
+			;;
+		--discovered | --eligible | --excluded | --skipped | --refreshed | --failed)
+			(($# >= 2)) || fail_usage "$1 requires a value"
+			value="$2"
+			is_nonnegative_integer "$value" || fail_usage "invalid value for $1"
+			case "$1" in
+			--discovered) discovered="$value" ;;
+			--eligible) eligible="$value" ;;
+			--excluded) excluded="$value" ;;
+			--skipped) skipped="$value" ;;
+			--refreshed) refreshed="$value" ;;
+			--failed) failed="$value" ;;
+			esac
+			shift 2
+			;;
+		*)
+			fail_usage "unknown argument: $1"
+			;;
+		esac
+	done
+
+	case "$component" in
+	controller | current-shell) ;;
+	*) fail_usage 'invalid or missing component' ;;
+	esac
+	((${#reasons[@]} > 1)) || fail_usage 'at least one reason is required'
+	if [[ ! "$exit_status" =~ ^[0-9]+$ ]] ||
+		((exit_status < 1 || exit_status > 255)); then
+		fail_usage 'invalid or missing exit status'
+	fi
+	command -v jq >/dev/null 2>&1 ||
+		fail_usage 'required command not found: jq'
+
+	state_dir="$(resolve_state_dir)" || exit $?
+	validate_private_directory "$state_dir" || exit $?
+	reasons_json="$(
+		printf '%s\n' "${reasons[@]:1}" |
+			jq -Rsc 'split("\n") | map(select(length > 0)) | unique'
+	)" || {
+		printf '%s\n' 'refresh-doctor: could not encode failure reasons' >&2
+		exit 2
+	}
+
+	client_version="$(get_client_version)" || client_version="unavailable"
+
+	recorded_at="$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')" || {
+		printf '%s\n' 'refresh-doctor: could not derive record timestamp' >&2
+		exit 2
+	}
+	filename_timestamp="$(/bin/date -u '+%Y%m%dT%H%M%SZ')" || {
+		printf '%s\n' 'refresh-doctor: could not derive record filename' >&2
+		exit 2
+	}
+	umask 077
+	record_tmp="$(mktemp "${state_dir}/.failure.XXXXXX")" || {
+		printf '%s\n' 'refresh-doctor: could not create failure record' >&2
+		exit 2
+	}
+	# shellcheck disable=SC2317,SC2329 # Invoked indirectly by the EXIT trap.
+	cleanup_record() {
+		if [[ -n "$record_tmp" ]]; then
+			/bin/rm -f -- "$record_tmp"
+		fi
+	}
+	trap cleanup_record EXIT
+
+	if ! jq -n \
+		--arg recorded_at "$recorded_at" \
+		--arg component "$component" \
+		--argjson reasons "$reasons_json" \
+		--argjson exit_status "$exit_status" \
+		--arg herdr_client_version "$client_version" \
+		--argjson discovered "$discovered" \
+		--argjson eligible "$eligible" \
+		--argjson excluded "$excluded" \
+		--argjson skipped "$skipped" \
+		--argjson refreshed "$refreshed" \
+		--argjson failed "$failed" \
+		'{
+		  schema_version: 1,
+		  recorded_at: $recorded_at,
+		  component: $component,
+		  reasons: $reasons,
+		  exit_status: $exit_status,
+		  herdr_client_version: $herdr_client_version,
+		  counts: {
+		    discovered: $discovered,
+		    eligible: $eligible,
+		    excluded: $excluded,
+		    skipped: $skipped,
+		    refreshed: $refreshed,
+		    failed: $failed
+		  }
+		}' >"$record_tmp" ||
+		! /bin/chmod 600 "$record_tmp"; then
+		printf '%s\n' 'refresh-doctor: could not write failure record' >&2
+		exit 2
+	fi
+
+	current_uid="$(/usr/bin/id -u)" || exit 2
+	record_uid="$(stat_uid "$record_tmp")" || exit 2
+	record_mode="$(stat_mode "$record_tmp")" || exit 2
+	if [[ ! -f "$record_tmp" || -L "$record_tmp" ||
+		"$record_uid" != "$current_uid" || "$record_mode" != 600 ]]; then
+		printf '%s\n' 'refresh-doctor: failure record must be private' >&2
+		exit 2
+	fi
+
+	suffix="${record_tmp##*.}"
+	record_file="${state_dir}/failure-${filename_timestamp}-$$-${suffix}.json"
+	if ! /bin/ln "$record_tmp" "$record_file"; then
+		printf '%s\n' 'refresh-doctor: could not publish failure record' >&2
+		exit 2
+	fi
+	/bin/rm -f -- "$record_tmp"
+	record_tmp=""
+	rotate_records "$state_dir"
+	trap - EXIT
+}
+
+inspect_latest_record() {
+	local state_dir
+	local current_uid
+	local directory_uid
+	local directory_mode
+	local record
+	local unsafe_record
+	local record_uid
+	local record_mode
+	local compact_record
+
+	state_dir="$(resolve_state_dir)" || {
+		printf '%s\n' 'latest_failure: invalid'
+		return 1
+	}
+	if [[ ! -e "$state_dir" && ! -L "$state_dir" ]]; then
+		printf '%s\n' 'latest_failure: none'
+		return 0
+	fi
+	if [[ ! -d "$state_dir" || -L "$state_dir" ]]; then
+		printf '%s\n' 'latest_failure: invalid'
+		return 1
+	fi
+	current_uid="$(/usr/bin/id -u)" || {
+		printf '%s\n' 'latest_failure: invalid'
+		return 1
+	}
+	directory_uid="$(stat_uid "$state_dir")" || {
+		printf '%s\n' 'latest_failure: invalid'
+		return 1
+	}
+	directory_mode="$(stat_mode "$state_dir")" || {
+		printf '%s\n' 'latest_failure: invalid'
+		return 1
+	}
+	if [[ "$directory_uid" != "$current_uid" || "$directory_mode" != 700 ]]; then
+		printf '%s\n' 'latest_failure: invalid'
+		return 1
+	fi
+
+	unsafe_record="$(
+		/usr/bin/find "$state_dir" -maxdepth 1 \
+			-name 'failure-*.json' ! -type f -print |
+			/usr/bin/sed -n '1p'
+	)"
+	if [[ -n "$unsafe_record" ]]; then
+		printf '%s\n' 'latest_failure: invalid'
+		return 1
+	fi
+
+	record="$(
+		/usr/bin/find "$state_dir" -maxdepth 1 -type f \
+			-name 'failure-*.json' -print |
+			/usr/bin/sort -r |
+			/usr/bin/sed -n '1p'
+	)"
+	if [[ -z "$record" ]]; then
+		printf '%s\n' 'latest_failure: none'
+		return 0
+	fi
+	record_uid="$(stat_uid "$record")" || {
+		printf '%s\n' 'latest_failure: invalid'
+		return 1
+	}
+	record_mode="$(stat_mode "$record")" || {
+		printf '%s\n' 'latest_failure: invalid'
+		return 1
+	}
+	if [[ ! -f "$record" || -L "$record" ||
+		"$record_uid" != "$current_uid" || "$record_mode" != 600 ]]; then
+		printf '%s\n' 'latest_failure: invalid'
+		return 1
+	fi
+
+	compact_record="$(jq -c -e '
+	  . as $record |
+	  if (
+	  (type == "object") and
+	  (keys == [
+	    "component",
+	    "counts",
+	    "exit_status",
+	    "herdr_client_version",
+	    "reasons",
+	    "recorded_at",
+	    "schema_version"
+	  ]) and
+	  (.schema_version == 1) and
+	  (.recorded_at | type == "string" and
+	    test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")) and
+	  (.component == "controller" or .component == "current-shell") and
+	  (.reasons | type == "array" and length > 0 and
+	    all(.[]; type == "string" and test("^[a-z0-9-]{1,64}$"))) and
+	  (.reasons == (.reasons | unique)) and
+	  (.exit_status | type == "number" and floor == . and . >= 1 and . <= 255) and
+	  (.herdr_client_version | type == "string" and
+	    test("^(unavailable|[0-9]+\\.[0-9]+\\.[0-9]+([.-][A-Za-z0-9.-]+)?)$")) and
+	  (.counts | type == "object" and
+	    keys == ["discovered", "eligible", "excluded", "failed", "refreshed", "skipped"]) and
+	  (.counts | all(.[]; type == "number" and floor == . and . >= 0))
+	  ) then $record else error("invalid failure record") end
+	' "$record" 2>/dev/null)" || {
+		printf '%s\n' 'latest_failure: invalid'
+		return 1
+	}
+	printf 'latest_failure: %s\n' "$compact_record"
+}
+
+# Herdr renames the labels in its human-readable `status` output between
+# releases: 0.9.0 turned the server's `protocol`/`compatible` into
+# `private_protocol`/`private_protocol_compatible`, so label scraping stopped
+# ever seeing "compatible: yes" and this doctor failed closed forever. The
+# --json document has carried stable key names since 0.7.5. Render the same
+# sanitized text from it, keeping every value allowlisted as before.
+sanitize_herdr_status() {
+	command jq -r '
+	  def verline($label; $v):
+	    if ($v | type) == "string" and
+	       ($v | test("^[0-9]+[.][0-9]+[.][0-9]+([.-][A-Za-z0-9.-]+)?$"))
+	    then "  " + $label + ": " + $v else empty end;
+	  def numline($label; $v):
+	    if ($v | type) == "number" and $v == ($v | floor) and $v >= 0
+	    then "  " + $label + ": " + ($v | tostring) else empty end;
+	  def ynline($label; $v):
+	    if ($v | type) == "boolean"
+	    then "  " + $label + ": " + (if $v then "yes" else "no" end) else empty end;
+	  def strline($label; $v; $allowed):
+	    if ($v | type) == "string" and ($allowed | index($v)) != null
+	    then "  " + $label + ": " + $v else empty end;
+	  if type != "object" then empty else
+	    "client:",
+	    verline("version"; .client.version),
+	    strline("channel"; .client.channel; ["stable", "preview"]),
+	    numline("protocol"; .client.protocol),
+	    "server:",
+	    strline("status";
+	      (if .server.status == "not_running" then "stopped" else .server.status end);
+	      ["running", "stopped"]),
+	    verline("version"; .server.version),
+	    numline("protocol"; .server.protocol),
+	    ynline("compatible"; .server.compatible),
+	    "update:",
+	    ynline("server_binary_stale"; .update.server_binary_stale),
+	    ynline("restart_needed"; .update.restart_needed)
+	  end
+	' 2>/dev/null
+}
+
+run_doctor() {
+	local health_status=0
+	local client_version
+	local status_output
+	local sanitized_status
+	local controller="${HOME:-}/.local/bin/herdr-refresh-safe-shell-panes"
+	local worker="${HOME:-}/.local/bin/zsh-refresh-current"
+
+	client_version="$(get_client_version)" || health_status=1
+	printf 'client_version: %s\n' "$client_version"
+
+	if status_output="$(command herdr status --json 2>/dev/null)" &&
+		sanitized_status="$(printf '%s\n' "$status_output" | sanitize_herdr_status)" &&
+		/usr/bin/grep -q '^client:$' <<<"$sanitized_status" &&
+		/usr/bin/grep -q '^server:$' <<<"$sanitized_status" &&
+		/usr/bin/grep -q '^  status: running$' <<<"$sanitized_status" &&
+		/usr/bin/grep -q '^  compatible: yes$' <<<"$sanitized_status" &&
+		/usr/bin/grep -q '^  restart_needed: no$' <<<"$sanitized_status"; then
+		printf '%s\n' 'herdr_status: ok'
+		printf '%s\n' "$sanitized_status"
+	else
+		printf '%s\n' 'herdr_status: failed'
+		if [[ -n "${sanitized_status:-}" ]]; then
+			printf '%s\n' "$sanitized_status"
+		fi
+		health_status=1
+	fi
+
+	if [[ -x "$controller" ]] &&
+		command "$controller" --dry-run >/dev/null 2>&1; then
+		printf '%s\n' 'pane_preflight: ok'
+	else
+		printf '%s\n' 'pane_preflight: failed'
+		health_status=1
+	fi
+
+	if [[ -x "$worker" ]] &&
+		command "$worker" --check >/dev/null 2>&1; then
+		printf '%s\n' 'shell_preflight: ok'
+	else
+		printf '%s\n' 'shell_preflight: failed'
+		health_status=1
+	fi
+
+	if ! inspect_latest_record; then
+		health_status=1
+	fi
+
+	if ((health_status == 0)); then
+		printf '%s\n' 'result: healthy'
+		return 0
+	fi
+	printf '%s\n' 'result: unhealthy'
+	return 1
+}
+
+case "${1:-}" in
+--record)
+	shift
+	record_failure "$@"
+	;;
+--help | -h)
+	usage
+	;;
+"")
+	run_doctor
+	;;
+*)
+	fail_usage "unknown argument: $1"
+	;;
+esac

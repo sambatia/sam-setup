@@ -1,0 +1,18 @@
+# Tool defaults backfill from the installed release; keep this file small.
+editor = "zed"
+poll_interval = "2s"
+
+# Keep workmux hooks out of the private agentmgr server.
+[tools.claude]
+command = "env WORKMUX_DISABLE_SET_WINDOW_STATUS=1 claude"
+resume_by_id_command = "env WORKMUX_DISABLE_SET_WINDOW_STATUS=1 claude --resume {id}"
+resume_picker_command = "env WORKMUX_DISABLE_SET_WINDOW_STATUS=1 claude --resume"
+fork_command = "env WORKMUX_DISABLE_SET_WINDOW_STATUS=1 claude --resume {id} --fork-session --session-id {new_id} --name {name}"
+revive_command = "env WORKMUX_DISABLE_SET_WINDOW_STATUS=1 claude --continue"
+
+[tools.codex]
+command = "env WORKMUX_DISABLE_SET_WINDOW_STATUS=1 codex"
+resume_by_id_command = "env WORKMUX_DISABLE_SET_WINDOW_STATUS=1 codex resume {id}"
+resume_picker_command = "env WORKMUX_DISABLE_SET_WINDOW_STATUS=1 codex resume"
+fork_command = "env WORKMUX_DISABLE_SET_WINDOW_STATUS=1 codex fork {id}"
+revive_command = "env WORKMUX_DISABLE_SET_WINDOW_STATUS=1 codex resume --last"

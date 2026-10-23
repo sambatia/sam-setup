@@ -1,0 +1,185 @@
+#!/bin/bash
+
+# Run conservative, local checks that apply to a Git repository.
+# Network- or target-sensitive tools are intentionally never invoked here.
+
+set -u -o pipefail
+
+usage() {
+	cat <<'EOF'
+Usage: repo-audit [PATH]
+
+Run local, non-mutating checks for the Git repository containing PATH.
+PATH defaults to the current directory.
+
+The command does not execute Hurl scenarios, create Worktrunk worktrees,
+rewrite Git history, inspect Docker images, or trace network hosts.
+EOF
+}
+
+if (($# > 1)); then
+	printf '%s\n' "repo-audit: expected at most one PATH" >&2
+	usage >&2
+	exit 2
+fi
+
+if (($# == 1)) && [[ "$1" == "--help" || "$1" == "-h" ]]; then
+	usage
+	exit 0
+fi
+
+input_path="${1:-.}"
+if [[ ! -d "$input_path" ]]; then
+	printf '%s\n' "repo-audit: directory does not exist: $input_path" >&2
+	exit 2
+fi
+
+repo_root="$(git -C "$input_path" rev-parse --show-toplevel 2>/dev/null)"
+if [[ -z "$repo_root" ]]; then
+	printf '%s\n' "repo-audit: not inside a Git work tree: $input_path" >&2
+	exit 2
+fi
+
+workflow_files=()
+shell_files=()
+terraform_files=()
+tabular_files=()
+documentation_files=()
+hurl_files=()
+kubernetes_files=()
+docker_files=()
+
+while IFS= read -r -d '' file; do
+	case "$file" in
+	.github/workflows/*.yml | .github/workflows/*.yaml)
+		workflow_files+=("./$file")
+		;;
+	esac
+
+	case "$file" in
+	*.sh)
+		shell_files+=("./$file")
+		;;
+	esac
+
+	case "$file" in
+	*.tf)
+		terraform_files+=("./$file")
+		;;
+	esac
+
+	case "$file" in
+	*.csv | *.tsv)
+		tabular_files+=("./$file")
+		;;
+	esac
+
+	case "$file" in
+	*.md | *.markdown | *.html | *.htm)
+		documentation_files+=("./$file")
+		;;
+	esac
+
+	case "$file" in
+	*.hurl)
+		hurl_files+=("./$file")
+		;;
+	esac
+
+	case "$file" in
+	k8s/*.yml | k8s/*.yaml | kubernetes/*.yml | kubernetes/*.yaml | helm/*.yml | helm/*.yaml | charts/*.yml | charts/*.yaml | Chart.yaml | */Chart.yaml | kustomization.yml | kustomization.yaml | */kustomization.yml | */kustomization.yaml)
+		kubernetes_files+=("./$file")
+		;;
+	esac
+
+	case "$file" in
+	Dockerfile | */Dockerfile | Dockerfile.* | */Dockerfile.* | compose.yml | compose.yaml | */compose.yml | */compose.yaml | docker-compose.yml | docker-compose.yaml | */docker-compose.yml | */docker-compose.yaml)
+		docker_files+=("./$file")
+		;;
+	esac
+done < <(git -C "$repo_root" ls-files -z)
+
+passed=0
+failed=0
+skipped=0
+
+run_check() {
+	local label="$1"
+	shift
+	printf 'RUN  %s\n' "$label"
+	if (cd "$repo_root" && "$@"); then
+		printf 'PASS %s\n' "$label"
+		((passed += 1))
+	else
+		printf 'FAIL %s\n' "$label"
+		((failed += 1))
+	fi
+}
+
+skip_check() {
+	printf 'SKIP %s\n' "$1"
+	((skipped += 1))
+}
+
+run_if_installed() {
+	local command_name="$1"
+	local label="$2"
+	shift 2
+	if command -v "$command_name" >/dev/null 2>&1; then
+		run_check "$label" "$@"
+	else
+		skip_check "$command_name is not installed"
+	fi
+}
+
+printf 'Repository: %s\n' "$repo_root"
+printf '%s\n\n' "Mode: local, offline, non-mutating"
+
+if git -C "$repo_root" rev-parse --verify HEAD >/dev/null 2>&1; then
+	run_check "Git whitespace" git -C "$repo_root" diff --check HEAD
+else
+	run_check "Git whitespace (working tree)" git -C "$repo_root" diff --check
+	run_check "Git whitespace (index)" git -C "$repo_root" diff --cached --check
+fi
+
+if ((${#workflow_files[@]} > 0)); then
+	run_if_installed actionlint "GitHub Actions" actionlint "${workflow_files[@]}"
+fi
+
+run_if_installed typos "Source spelling" typos .
+
+if ((${#shell_files[@]} > 0)); then
+	run_if_installed shellcheck "Shell analysis" shellcheck -x -- "${shell_files[@]}"
+	run_if_installed shfmt "Shell formatting" shfmt -d -- "${shell_files[@]}"
+fi
+
+if ((${#terraform_files[@]} > 0)); then
+	run_if_installed tofu "OpenTofu formatting" tofu fmt -check -recursive .
+	run_if_installed tflint "Terraform lint" tflint --chdir="$repo_root" --recursive --call-module-type=none --no-color
+fi
+
+if ((${#tabular_files[@]} > 0)); then
+	run_if_installed qsv "CSV/TSV structure" qsv validate "${tabular_files[@]}"
+fi
+
+if ((${#documentation_files[@]} > 0)); then
+	run_if_installed lychee "Local documentation links" lychee --offline --no-progress --root-dir "$repo_root" -- "${documentation_files[@]}"
+fi
+
+printf '\n'
+if ((${#hurl_files[@]} > 0)); then
+	printf '%s\n' "NOTE Hurl files detected; execution remains manual because requests may mutate remote services."
+fi
+if ((${#kubernetes_files[@]} > 0)); then
+	printf '%s\n' "NOTE Kubernetes YAML detected; schema validation remains manual because schemas may require network access or project-specific CRDs."
+fi
+if ((${#docker_files[@]} > 0)); then
+	printf '%s\n' "NOTE Docker files detected; image analysis requires an explicit image or build target."
+fi
+printf '%s\n\n' "NOTE Worktrunk, Git Absorb, and Trippy always require explicit user-selected targets or operations."
+printf 'Summary: %d passed, %d failed, %d skipped.\n' "$passed" "$failed" "$skipped"
+
+if ((failed > 0)); then
+	exit 1
+fi
+exit 0

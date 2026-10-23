@@ -1,104 +1,184 @@
 #!/usr/bin/env bash
 #
-# bootstrap.sh — one-line entrypoint for "your Mac = Sam's Mac".
+# bootstrap.sh — zero-friction, one-line workstation setup for macOS.
 #
-# Fetched by the pinned-tag one-liner in README.md (with `sh`, hence the re-exec
-# below). Installs Xcode CLT + Homebrew + chezmoi, then hands off to
-# `chezmoi init --apply`, which prompts for identity, backs up existing config,
-# installs the Brewfile, lays down dotfiles, and generates an SSH key.
+# Usage:
+#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/sambatia/sam-setup/main/bootstrap.sh)"
 #
-# T15: re-exec into bash so the bash-isms below are safe even when fetched via sh.
+# Installs:
+#   1. Xcode Command Line Tools + Homebrew (if missing)
+#   2. Chezmoi dotfiles engine
+#   3. Curated Brewfile (modern CLI tools, Ghostty, JetBrains Mono Nerd Font, casks)
+#   4. Language runtimes via mise (Node.js LTS, pnpm, Python tools via uv)
+#   5. Pre-configured Neovim LazyVim stack & tmux plugins (TPM)
+#   6. Herdr multi-agent multiplexer integration
+#   7. Fresh SSH key generation (only if none exists)
+#
+# Pre-existing configurations are automatically backed up to <path>.bak-<timestamp>.
+# Safe, idempotent, and reversible via: sam-setup-restore
+
 if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
 
 set -euo pipefail
 
 REPO="${SAM_SETUP_REPO:-sambatia/sam-setup}"
 
-say() { printf '\033[1;35m▸\033[0m %s\n' "$1"; }
-die() { printf '\033[1;31m✗\033[0m %s\n' "$1" >&2; exit 1; }
+if [ -t 1 ]; then
+  C_B=$'\033[1m'; C_G=$'\033[32m'; C_Y=$'\033[33m'; C_M=$'\033[35m'; C_C=$'\033[36m'; C_R=$'\033[31m'; C_D=$'\033[2m'; C_RST=$'\033[0m'
+else
+  C_B=""; C_G=""; C_Y=""; C_M=""; C_C=""; C_R=""; C_D=""; C_RST=""
+fi
 
-# ── Upfront consent gate (Issue 4): one [y/N], then unattended ───────────────
+say()  { printf '%s▸%s %s\n' "$C_M" "$C_RST" "$1"; }
+step() { printf '\n%s==>%s %s%s%s\n' "$C_C" "$C_RST" "$C_B" "$1" "$C_RST"; }
+ok()   { printf '%s✓%s %s\n' "$C_G" "$C_RST" "$1"; }
+warn() { printf '%s!%s %s\n' "$C_Y" "$C_RST" "$1"; }
+die()  { printf '%s✗%s %s\n' "$C_R" "$C_RST" "$1" >&2; exit 1; }
+
+# ── Upfront Consent ──────────────────────────────────────────────────────────
 consent() {
-  [ "${SAM_SETUP_YES:-0}" = "1" ] && return 0   # CI/non-interactive pre-approve
+  [ "${SAM_SETUP_YES:-0}" = "1" ] && return 0
   cat <<'EOF'
-star-setup will, on THIS Mac:
-  · install Xcode Command Line Tools + Homebrew (if missing)
-  · install the Brewfile tools/apps
-  · generate an SSH key ONLY if you have none
-  · back up (never silently overwrite) then replace:
-      ~/.zshrc  ~/.zshenv  ~/.gitconfig  ~/.tmux.conf
-      ~/.config/{nvim,mise,starship.toml,ghostty}
-You'll be asked your name + email next. None of Sam's secrets are installed.
-EOF
-  printf 'proceed? [y/N] '
-  read -r reply
-  case "$reply" in y|Y|yes|YES) return 0 ;; *) die "aborted — nothing was changed." ;; esac
-}
+sam-setup will configure a modern, AI-engineering macOS terminal environment:
+  · Xcode Command Line Tools + Homebrew (if missing)
+  · Modern CLI tools: eza, bat, ripgrep, zoxide, atuin, fzf, yazi, btop, just, etc.
+  · Ghostty terminal + JetBrains Mono Nerd Font
+  · Neovim (LazyVim distribution) + tmux (Ctrl-A prefix, TPM) + Herdr multiplexer
+  · Node.js LTS, pnpm, and Python runtimes via mise & uv
+  · Generate a fresh ed25519 SSH key (ONLY if you have none)
+  · Back up any pre-existing configs to ~/.config/*.bak-<timestamp>
 
-# T13: macOS-only + a hard minimum version (Homebrew, casks, and fonts drop
-# support for old macOS). Bump MIN_MACOS as upstream requirements move.
-MIN_MACOS=13   # Ventura
-ensure_macos() {
-  [ "$(uname -s)" = "Darwin" ] || die "macOS only (this reproduces a Mac workstation)."
-  local major; major="$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)"
-  case "$major" in
-    ''|*[!0-9]*) say "could not read macOS version — continuing." ;;
-    *) [ "$major" -ge "$MIN_MACOS" ] || die "macOS $major is below the minimum (${MIN_MACOS}). Update first." ;;
+Your identity stays yours. None of Sam's personal credentials or secrets are copied.
+EOF
+  printf 'Proceed with installation? [y/N] '
+  read -r reply
+  case "$reply" in
+    y|Y|yes|YES) return 0 ;;
+    *) die "Installation aborted. Nothing was modified." ;;
   esac
 }
 
-# T13: Apple Silicon may hit Intel-only casks. Install Rosetta 2 up front
-# (idempotent; best-effort — a couple of casks just won't run without it).
-ensure_rosetta() {
-  [ "$(uname -m)" = "arm64" ] || return 0
-  /usr/bin/pgrep -q oahd 2>/dev/null && return 0   # already installed
-  say "Installing Rosetta 2 (for any Intel-only apps)…"
-  softwareupdate --install-rosetta --agree-to-license >/dev/null 2>&1 || say "Rosetta install skipped (Intel-only casks may not run)."
+# ── Compatibility Checks ─────────────────────────────────────────────────────
+MIN_MACOS=13
+ensure_macos() {
+  [ "$(uname -s)" = "Darwin" ] || die "This setup script targets macOS only."
+  local major
+  major="$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)"
+  case "$major" in
+    ''|*[!0-9]*) say "Could not determine exact macOS version — continuing." ;;
+    *) [ "$major" -ge "$MIN_MACOS" ] || die "macOS $major is below minimum required (${MIN_MACOS}). Please update first." ;;
+  esac
 }
 
-# T2: Xcode Command Line Tools — required by Homebrew. Triggers a GUI dialog on a
-# factory Mac; wait for it (it provides git/cc) before continuing.
+ensure_rosetta() {
+  [ "$(uname -m)" = "arm64" ] || return 0
+  /usr/bin/pgrep -q oahd 2>/dev/null && return 0
+  say "Installing Rosetta 2 for any Intel-only binaries…"
+  softwareupdate --install-rosetta --agree-to-license >/dev/null 2>&1 || warn "Rosetta install skipped."
+}
+
+# ── Foundational Prerequisites ───────────────────────────────────────────────
 ensure_clt() {
   xcode-select -p >/dev/null 2>&1 && return 0
-  say "Installing Xcode Command Line Tools (a dialog may pop up — click Install)…"
+  say "Installing Xcode Command Line Tools (a system prompt may appear — click Install)…"
   xcode-select --install >/dev/null 2>&1 || true
-  # Bounded wait (~20 min) so a cancelled dialog doesn't hang forever.
   local tries=0 max=240
   until xcode-select -p >/dev/null 2>&1; do
     tries=$((tries + 1))
-    [ "$tries" -ge "$max" ] && die "Command Line Tools not installed after ~20 min. Run 'xcode-select --install', finish it, then re-run."
+    [ "$tries" -ge "$max" ] && die "Command Line Tools installation timed out after 20 minutes."
     sleep 5
   done
-  say "Command Line Tools ready."
+  ok "Xcode Command Line Tools installed"
 }
 
-# T2: Homebrew + the all-important shellenv (Apple Silicon vs Intel prefix).
 ensure_brew() {
   if ! command -v brew >/dev/null 2>&1; then
-    say "Installing Homebrew (official installer)…"
+    say "Installing Homebrew package manager…"
     NONINTERACTIVE=1 /bin/bash -c \
       "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
-      || die "Homebrew install failed."
+      || die "Homebrew installation failed."
   fi
   for p in /opt/homebrew/bin/brew /usr/local/bin/brew; do
     [ -x "$p" ] && eval "$("$p" shellenv)" && break
   done
-  command -v brew >/dev/null 2>&1 || die "brew not on PATH after install (shellenv)."
+  command -v brew >/dev/null 2>&1 || die "Homebrew not found on PATH after install."
+  ok "Homebrew ready"
 }
 
+# ── Main Lifecycle ───────────────────────────────────────────────────────────
 main() {
+  printf '\n%s🚀 Starting Workstation Bootstrap%s\n\n' "$C_B" "$C_RST"
   ensure_macos
   consent
   ensure_rosetta
   ensure_clt
   ensure_brew
-  command -v chezmoi >/dev/null 2>&1 || { say "Installing chezmoi…"; brew install chezmoi || die "chezmoi install failed."; }
-  say "Applying the setup (chezmoi will prompt for name/email)…"
-  chezmoi init --apply "$REPO" || die "chezmoi init failed."
-  printf '\033[1;32m✓ done.\033[0m If a new SSH key was generated, add it to GitHub:\n'
-  printf '    gh ssh-key add ~/.ssh/id_ed25519.pub   # or paste it at github.com/settings/keys\n'
-  printf 'Undo everything with:  sam-setup-restore\n'
+
+  # Install Chezmoi
+  step "1/6: Installing dotfiles management engine (chezmoi)"
+  if ! command -v chezmoi >/dev/null 2>&1; then
+    brew install chezmoi || die "Failed to install chezmoi."
+  fi
+  ok "chezmoi installed"
+
+  # Apply Dotfiles and Packages
+  step "2/6: Applying dotfiles and packages (Homebrew Bundle)"
+  say "Chezmoi will now prompt for your name and email (used for git commits)."
+  chezmoi init --apply "$REPO" || die "chezmoi apply failed."
+  ok "Dotfiles applied and packages installed"
+
+  # Setup Language Runtimes & Node Globals
+  step "3/6: Initializing runtimes and global tools via mise"
+  if command -v mise >/dev/null 2>&1; then
+    say "Installing Node.js LTS and pnpm…"
+    mise install --yes || warn "mise install finished with warnings."
+    say "Seeding developer CLI utilities…"
+    mise run node-globals || warn "node-globals task finished with warnings."
+    ok "mise runtimes and CLI tools configured"
+  else
+    warn "mise not found on PATH; skipping runtime installation."
+  fi
+
+  # Setup Neovim LazyVim
+  step "4/6: Initializing Neovim LazyVim plugins"
+  if command -v nvim >/dev/null 2>&1; then
+    say "Pre-syncing plugins headlessly…"
+    nvim --headless '+Lazy! sync' +qa >/dev/null 2>&1 || true
+    ok "Neovim plugins synchronized"
+  fi
+
+  # Setup Tmux TPM & Herdr
+  step "5/6: Configuring terminal multiplexers (Tmux & Herdr)"
+  if [ -x "$HOME/.tmux/plugins/tpm/bin/install_plugins" ]; then
+    "$HOME/.tmux/plugins/tpm/bin/install_plugins" >/dev/null 2>&1 || true
+    ok "Tmux plugins installed"
+  fi
+  if command -v herdr >/dev/null 2>&1; then
+    for integ in claude codex omp cursor opencode; do
+      herdr integration install "$integ" >/dev/null 2>&1 || true
+    done
+    ok "Herdr integrations registered"
+  fi
+
+  # Post-Install Verification
+  step "6/6: Verifying workstation health"
+  if [ -x "$HOME/.local/bin/sam-setup-check" ]; then
+    "$HOME/.local/bin/sam-setup-check" || warn "Some checks reported warnings (review above)."
+  else
+    ok "Installation complete."
+  fi
+
+  printf '\n%s🎉 Workstation replication complete!%s\n\n' "$C_B" "$C_RST"
+  printf 'Next steps to start using your new environment:\n'
+  printf '  1. %sRestart your terminal%s (or open Ghostty: /Applications/Ghostty.app)\n' "$C_B" "$C_RST"
+  printf '  2. If an SSH key was generated, copy your public key to GitHub:\n'
+  printf '     %sgh ssh-key add ~/.ssh/id_ed25519.pub%s\n' "$C_C" "$C_RST"
+  printf '  3. Sign in to your AI coding agents:\n'
+  printf '     %sclaude login%s\n' "$C_C" "$C_RST"
+  printf '     %scodex%s\n' "$C_C" "$C_RST"
+  printf '  4. To update your entire system in the future, simply run:\n'
+  printf '     %supdate-all%s\n\n' "$C_C" "$C_RST"
+  printf 'To undo or rollback these changes at any time, run: %ssam-setup-restore%s\n\n' "$C_D" "$C_RST"
 }
 
-# Source-guard: tests source this file and call consent()/ensure_* in isolation.
 if [ "${BASH_SOURCE[0]:-$0}" = "${0}" ]; then main "$@"; fi

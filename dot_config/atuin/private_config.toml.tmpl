@@ -1,0 +1,19 @@
+## atuin config
+dialect          = "us"
+style            = "compact"
+inline_height    = 20
+show_preview     = true
+exit_mode        = "return-query"
+search_mode      = "daemon-fuzzy"
+filter_mode      = "global"
+ctrl_n_shortcuts = false
+auto_sync        = false
+
+[ai]
+enabled = true
+
+[daemon]
+enabled = true
+autostart = true
+# Stable across macOS launch contexts; the default derives from $TMPDIR.
+socket_path = "{{ .chezmoi.homeDir }}/.local/share/atuin/atuin.sock"

@@ -13,3 +13,7 @@ id_rsa
 # chezmoi local state
 .chezmoistate
 Brewfile.full
+backups/
+*.bak
+*.bak-*
+

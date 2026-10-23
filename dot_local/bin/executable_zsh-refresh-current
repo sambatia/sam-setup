@@ -1,0 +1,427 @@
+#!/bin/bash
+
+# Validate one Zsh startup in an isolated child. The invoking interactive shell
+# remains responsible for replacing itself only after this gate succeeds.
+
+set -u -o pipefail
+
+stat_uid() {
+	local value
+
+	if value="$(/usr/bin/stat -f '%u' "$1" 2>/dev/null)"; then
+		printf '%s\n' "$value"
+		return 0
+	fi
+	/usr/bin/stat -c '%u' "$1" 2>/dev/null
+}
+
+stat_mode() {
+	local value
+
+	if value="$(/usr/bin/stat -f '%Lp' "$1" 2>/dev/null)"; then
+		printf '%s\n' "$value"
+		return 0
+	fi
+	/usr/bin/stat -c '%a' "$1" 2>/dev/null
+}
+
+usage() {
+	cat <<'EOF'
+Usage: zsh-refresh-current [--check] [--clear] [--clear-only]
+                           [--ack-file ABSOLUTE_PATH]
+                           [--challenge SAFE_CHALLENGE] [--timeout-ms N]
+
+Validate an interactive login Zsh startup without replacing the invoking shell.
+  --refresh-phase P  Internal: prepare validates; finish clears/acknowledges.
+  --shell-job-count N  Internal: refuse refresh when the owning shell has jobs.
+  --check         Explicitly request validation-only behavior (the default).
+  --clear         Clear the screen and scrollback after validation.
+  --clear-only    Clear without startup validation or shell replacement.
+  --ack-file P    Atomically publish a private, silent acknowledgement to P.
+  --challenge V   Derive the acknowledgement written to --ack-file.
+  --timeout-ms N  Stop startup validation after N milliseconds (default: 10000).
+EOF
+}
+
+shell_job_count=0
+refresh_phase=full
+clear_requested=0
+clear_only=0
+ack_file=""
+challenge=""
+preflight_timeout_ms=10000
+
+while (($# > 0)); do
+	case "$1" in
+	--refresh-phase)
+		if (($# < 2)) || [[ "$2" != prepare && "$2" != finish ]]; then
+			printf '%s\n' 'zsh-refresh-current: invalid refresh phase' >&2
+			exit 2
+		fi
+		refresh_phase="$2"
+		shift 2
+		;;
+	--shell-job-count)
+		if (($# < 2)) || [[ ! "$2" =~ ^[0-9]+$ ]]; then
+			printf '%s\n' 'zsh-refresh-current: invalid shell job count' >&2
+			exit 2
+		fi
+		shell_job_count="$2"
+		shift 2
+		;;
+	--check)
+		shift
+		;;
+	--clear)
+		clear_requested=1
+		shift
+		;;
+	--clear-only)
+		clear_only=1
+		shift
+		;;
+	--ack-file)
+		if (($# < 2)); then
+			printf '%s\n' 'zsh-refresh-current: --ack-file requires a value' >&2
+			exit 2
+		fi
+		ack_file="$2"
+		shift 2
+		;;
+	--challenge)
+		if (($# < 2)); then
+			printf '%s\n' 'zsh-refresh-current: --challenge requires a value' >&2
+			exit 2
+		fi
+		challenge="$2"
+		shift 2
+		;;
+	--timeout-ms)
+		if (($# < 2)); then
+			printf '%s\n' 'zsh-refresh-current: --timeout-ms requires a value' >&2
+			exit 2
+		fi
+		preflight_timeout_ms="$2"
+		if [[ ! "$preflight_timeout_ms" =~ ^[0-9]+$ ]] || ((preflight_timeout_ms < 50 || preflight_timeout_ms > 60000)); then
+			printf 'zsh-refresh-current: invalid timeout: %s\n' "$preflight_timeout_ms" >&2
+			exit 2
+		fi
+		shift 2
+		;;
+	--help | -h)
+		usage
+		exit 0
+		;;
+	*)
+		printf 'zsh-refresh-current: unknown argument: %s\n' "$1" >&2
+		usage >&2
+		exit 2
+		;;
+	esac
+done
+
+if [[ -n "$challenge" && ! "$challenge" =~ ^[A-Za-z0-9._:-]{1,128}$ ]]; then
+	printf '%s\n' 'zsh-refresh-current: invalid challenge' >&2
+	exit 2
+fi
+
+if [[ -n "$ack_file" || -n "$challenge" ]]; then
+	if [[ -z "$ack_file" || -z "$challenge" ]]; then
+		printf '%s\n' 'zsh-refresh-current: --ack-file and --challenge must be combined' >&2
+		exit 2
+	fi
+fi
+
+if ((clear_only > 0 && clear_requested > 0)); then
+	printf '%s\n' 'zsh-refresh-current: --clear and --clear-only cannot be combined' >&2
+	exit 2
+fi
+
+if [[ "$refresh_phase" != full ]] &&
+	{ [[ -z "$ack_file" ]] || ((clear_only > 0)); }; then
+	printf '%s\n' 'zsh-refresh-current: refresh phases require acknowledgement and cannot clear-only' >&2
+	exit 2
+fi
+
+ack_dir=""
+validate_ack_destination() {
+	local ack_owner
+	local ack_mode
+	local current_uid
+
+	[[ -n "$ack_file" ]] || return 0
+
+	if [[ "$ack_file" != /* || "$ack_file" == *$'\n'* || "$ack_file" == *$'\r'* ]]; then
+		printf '%s\n' 'zsh-refresh-current: invalid acknowledgement path' >&2
+		return 2
+	fi
+
+	ack_dir="${ack_file%/*}"
+	if [[ -z "$ack_dir" || ! -d "$ack_dir" || -L "$ack_dir" ]]; then
+		printf '%s\n' 'zsh-refresh-current: invalid acknowledgement directory' >&2
+		return 2
+	fi
+
+	if [[ -e "$ack_file" || -L "$ack_file" ]]; then
+		printf '%s\n' 'zsh-refresh-current: acknowledgement path already exists' >&2
+		return 2
+	fi
+
+	if ! ack_owner="$(stat_uid "$ack_dir")" ||
+		! ack_mode="$(stat_mode "$ack_dir")" ||
+		! current_uid="$(/usr/bin/id -u)"; then
+		printf '%s\n' 'zsh-refresh-current: could not inspect acknowledgement directory' >&2
+		return 2
+	fi
+
+	if [[ "$ack_owner" != "$current_uid" || "$ack_mode" != 700 ]]; then
+		printf '%s\n' 'zsh-refresh-current: acknowledgement directory must be private' >&2
+		return 2
+	fi
+}
+
+validate_ack_destination
+ack_validation_status=$?
+if ((ack_validation_status != 0)); then
+	exit "$ack_validation_status"
+fi
+
+ack_tmp=""
+tmp_dir=""
+preflight_pid=""
+watchdog_pid=""
+# shellcheck disable=SC2317,SC2329 # Invoked indirectly by the EXIT trap below.
+cleanup() {
+	if [[ "$watchdog_pid" =~ ^[0-9]+$ ]]; then
+		kill "$watchdog_pid" 2>/dev/null || true
+	fi
+	if [[ "$preflight_pid" =~ ^[0-9]+$ ]]; then
+		kill -KILL "$preflight_pid" 2>/dev/null || true
+	fi
+	if [[ -n "$ack_tmp" ]]; then
+		/bin/rm -f -- "$ack_tmp"
+	fi
+	if [[ -n "$tmp_dir" ]]; then
+		case "$tmp_dir" in
+		"${TMPDIR:-/tmp}/zsh-refresh-current."*) /bin/rm -rf -- "$tmp_dir" ;;
+		esac
+	fi
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+publish_acknowledgement() {
+	local digest
+	local prefix="${1:-}"
+
+	[[ -n "$ack_file" ]] || return 0
+	validate_ack_destination
+	ack_validation_status=$?
+	if ((ack_validation_status != 0)); then
+		return "$ack_validation_status"
+	fi
+
+	digest="$(printf '%s' "$challenge" | /usr/bin/shasum -a 256 | awk '{print $1}')"
+	if [[ ! "$digest" =~ ^[a-f0-9]{64}$ ]]; then
+		printf '%s\n' 'zsh-refresh-current: could not derive acknowledgement' >&2
+		return 1
+	fi
+
+	umask 077
+	if ! ack_tmp="$(mktemp "${ack_file}.tmp.XXXXXX")"; then
+		printf '%s\n' 'zsh-refresh-current: could not create acknowledgement' >&2
+		return 1
+	fi
+	if ! /bin/chmod 600 "$ack_tmp" || ! printf '%s%s\n' "$prefix" "$digest" >"$ack_tmp"; then
+		printf '%s\n' 'zsh-refresh-current: could not write acknowledgement' >&2
+		return 1
+	fi
+	if ! /bin/ln "$ack_tmp" "$ack_file" 2>/dev/null; then
+		printf '%s\n' 'zsh-refresh-current: could not publish acknowledgement' >&2
+		return 1
+	fi
+	if /bin/rm -f -- "$ack_tmp"; then
+		ack_tmp=""
+	fi
+	return 0
+}
+
+# The parent Zsh supplies this count before spawning us; inspecting jobs in
+# this worker (or a command substitution) would silently lose that context.
+if [[ "$shell_job_count" != 0 ]]; then
+	printf '%s\n' 'refresh: pending jobs; shell was not replaced. Run jobs -l here; fg resumes a job, kill %N ends it.' >&2
+	publish_acknowledgement 'pending-jobs:' || exit $?
+	exit 75
+fi
+
+if ((clear_only > 0)) || [[ "$refresh_phase" == finish ]]; then
+	if ((clear_only > 0 || clear_requested > 0)); then
+		if ! clear; then
+			printf '%s\n' 'zsh-refresh-current: clear failed' >&2
+			exit 1
+		fi
+		printf '\033[3J'
+	fi
+	publish_acknowledgement
+	exit $?
+fi
+
+if [[ ! -x /usr/bin/perl ]]; then
+	printf '%s\n' 'zsh-refresh-current: required command is unavailable: /usr/bin/perl' >&2
+	exit 2
+fi
+
+zdotdir="${ZDOTDIR:-$HOME}"
+tmp_base="${TMPDIR:-/tmp}/zsh-refresh-current.XXXXXX"
+tmp_dir="$(mktemp -d "$tmp_base")" || {
+	printf '%s\n' 'zsh-refresh-current: could not create preflight directory' >&2
+	exit 1
+}
+
+syntax_log="${tmp_dir}/syntax.log"
+startup_out="${tmp_dir}/startup.out"
+startup_err="${tmp_dir}/startup.err"
+timeout_flag="${tmp_dir}/preflight.timed-out"
+startup_marker="zsh-refresh-preflight-${$}-${RANDOM}"
+
+startup_files=(
+	"${zdotdir}/.zshenv"
+	"${zdotdir}/.zprofile"
+	"${zdotdir}/.zshrc"
+	"${zdotdir}/.zlogin"
+)
+
+syntax_failed=0
+syntax_check_files=()
+for startup_file in "${startup_files[@]}"; do
+	[[ -f "$startup_file" ]] || continue
+	syntax_check_files+=("$startup_file")
+done
+
+module_dir="${zdotdir}/.zshrc.d"
+module_loader="${module_dir}/.module-loader.zsh"
+module_manifest="${module_dir}/.module-order"
+optional_plugin_loader="${module_dir}/.optional-plugin-loader.zsh"
+module_files=()
+for startup_file in "${module_dir}"/*.zsh; do
+	[[ -f "$startup_file" ]] || continue
+	module_files+=("$startup_file")
+done
+
+if [[ -e "$optional_plugin_loader" || -L "$optional_plugin_loader" ]]; then
+	if [[ ! -f "$optional_plugin_loader" || -L "$optional_plugin_loader" ]]; then
+		printf 'zsh-plugin-loader: loader must be a regular file: %s\n' \
+			"$optional_plugin_loader" >>"$syntax_log"
+		syntax_failed=1
+	else
+		syntax_check_files+=("$optional_plugin_loader")
+	fi
+fi
+
+if ((${#module_files[@]} > 0)); then
+	if [[ ! -f "$module_loader" ]]; then
+		printf 'zsh-module-loader: loader unavailable: %s\n' "$module_loader" >>"$syntax_log"
+		syntax_failed=1
+	elif ! /bin/zsh -n "$module_loader" >>"$syntax_log" 2>&1; then
+		syntax_failed=1
+	elif ! /bin/zsh -f "$module_loader" --validate \
+		"$module_dir" "$module_manifest" >>"$syntax_log" 2>&1; then
+		syntax_failed=1
+	fi
+
+	syntax_check_files+=("${module_files[@]}")
+fi
+
+for startup_file in "${syntax_check_files[@]}"; do
+	if ! /bin/zsh -fn "$startup_file" >>"$syntax_log" 2>&1; then
+		syntax_failed=1
+	fi
+done
+
+publish_prepare_failure() {
+	if [[ "$refresh_phase" == prepare ]]; then
+		publish_acknowledgement 'preflight-failed:' >/dev/null 2>&1 || true
+	fi
+}
+
+if ((syntax_failed > 0)); then
+	printf '%s\n' 'zsh-refresh-current: preflight failed (startup syntax)' >&2
+	sed -n '1,80p' "$syntax_log" >&2
+	publish_prepare_failure
+	exit 1
+fi
+
+check_term="${TERM:-}"
+if [[ -z "$check_term" || "$check_term" == "dumb" ]]; then
+	check_term="xterm-256color"
+fi
+
+TERM="$check_term" REFRESH_SENTINEL="$startup_marker" /bin/zsh -lic \
+	'print -r -- "$REFRESH_SENTINEL"' \
+	>"$startup_out" 2>"$startup_err" &
+preflight_pid=$!
+timeout_seconds="$(awk -v milliseconds="$preflight_timeout_ms" 'BEGIN { printf "%.3f", milliseconds / 1000 }')"
+/usr/bin/perl -e '
+  use strict;
+  use warnings;
+  my ($seconds, $pid, $flag) = @ARGV;
+  select undef, undef, undef, $seconds;
+  if (kill 0, $pid) {
+    open my $handle, ">", $flag or exit 2;
+    close $handle;
+    kill "TERM", $pid;
+    select undef, undef, undef, 0.1;
+    kill "KILL", $pid if kill 0, $pid;
+  }
+' "$timeout_seconds" "$preflight_pid" "$timeout_flag" &
+watchdog_pid=$!
+
+wait "$preflight_pid"
+preflight_status=$?
+preflight_pid=""
+kill "$watchdog_pid" 2>/dev/null || true
+wait "$watchdog_pid" 2>/dev/null || true
+watchdog_pid=""
+
+if [[ -e "$timeout_flag" ]]; then
+	printf 'zsh-refresh-current: preflight timed out after %s ms\n' "$preflight_timeout_ms" >&2
+	exit 1
+fi
+
+if ((preflight_status != 0)); then
+	printf '%s\n' 'zsh-refresh-current: preflight failed (startup runtime)' >&2
+	sed -n '1,80p' "$startup_err" >&2
+	publish_prepare_failure
+	exit 1
+fi
+
+if ! grep -Fqx "$startup_marker" "$startup_out"; then
+	printf '%s\n' 'zsh-refresh-current: preflight failed (completion marker missing)' >&2
+	sed -n '1,80p' "$startup_err" >&2
+	publish_prepare_failure
+	exit 1
+fi
+
+if [[ -s "$startup_err" ]]; then
+	printf '%s\n' 'zsh-refresh-current: preflight failed (startup wrote to stderr)' >&2
+	sed -n '1,80p' "$startup_err" >&2
+	publish_prepare_failure
+	exit 1
+fi
+
+# The controller re-reads the owning shell's jobs between prepare and finish.
+# Do not clear or acknowledge success until that final check has passed.
+[[ "$refresh_phase" != prepare ]] || exit 0
+
+if ((clear_requested > 0)); then
+	if ! clear; then
+		printf '%s\n' 'zsh-refresh-current: clear failed; shell was not replaced' >&2
+		exit 1
+	fi
+	printf '\033[3J'
+fi
+
+publish_acknowledgement
+exit $?

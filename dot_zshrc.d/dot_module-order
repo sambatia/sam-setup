@@ -1,0 +1,13 @@
+completion-paths.zsh
+fastfetch.zsh
+fzf.zsh
+herdr-sidebar-context.zsh
+update-all.zsh
+pretty-tools.zsh
+tuxedo.zsh
+herdr-refresh.zsh
+prompt-latency-probe.zsh
+tailscale.zsh
+tailscale-completions.zsh
+remote-access.zsh
+screensaver.zsh

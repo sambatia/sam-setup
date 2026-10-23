@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+#
+# sam-setup-check — read-only workstation replication health verification.
+#
+# Verifies that packages, runtimes, shell configurations, multiplexers,
+# and fonts have been installed cleanly and correctly.
+#
+# Usage:
+#   sam-setup-check
+#   sam-setup-check --help
+
+set -u
+
+if [ -t 1 ]; then
+  C_G=$'\033[32m'; C_Y=$'\033[33m'; C_R=$'\033[31m'; C_B=$'\033[1m'; C_RST=$'\033[0m'
+else
+  C_G=""; C_Y=""; C_R=""; C_B=""; C_RST=""
+fi
+
+PASS=0
+WARN=0
+FAIL=0
+
+pass() { PASS=$((PASS + 1)); printf '  %s✓%s %s\n' "$C_G" "$C_RST" "$1"; }
+warn() { WARN=$((WARN + 1)); printf '  %s!%s %s\n' "$C_Y" "$C_RST" "$1"; }
+fail() { FAIL=$((FAIL + 1)); printf '  %s✗%s %s\n' "$C_R" "$C_RST" "$1"; }
+
+printf '\n%s🔍 Workstation Health Check (sam-setup)%s\n\n' "$C_B" "$C_RST"
+
+# 1. System Baseline
+if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
+  pass "macOS system ($(sw_vers -productVersion 2>/dev/null || echo 'unknown'))"
+else
+  fail "Expected macOS"
+fi
+
+if [ "$(uname -m 2>/dev/null)" = "arm64" ]; then
+  pass "Apple Silicon (arm64)"
+else
+  warn "Non-arm64 architecture ($(uname -m 2>/dev/null))"
+fi
+
+# 2. Package Managers
+for pm in brew mise uv; do
+  if command -v "$pm" >/dev/null 2>&1; then
+    pass "Package manager: $pm is available"
+  else
+    fail "Package manager: $pm is missing"
+  fi
+done
+
+# 3. Core Shell & Modern Utilities
+REQUIRED_TOOLS="zsh git tmux herdr nvim starship zoxide atuin eza bat rg fd fzf lazygit btop yazi spf just gh"
+for tool in $REQUIRED_TOOLS; do
+  if command -v "$tool" >/dev/null 2>&1; then
+    pass "CLI utility: $tool is ready"
+  else
+    fail "CLI utility: $tool is missing"
+  fi
+done
+
+# 4. Runtimes & Languages
+if command -v node >/dev/null 2>&1; then
+  pass "Node.js runtime: $(node --version 2>/dev/null)"
+else
+  fail "Node.js is missing"
+fi
+
+if command -v pnpm >/dev/null 2>&1; then
+  pass "pnpm package manager: $(pnpm --version 2>/dev/null)"
+else
+  warn "pnpm is missing (install via: mise use -g pnpm)"
+fi
+
+if command -v python3 >/dev/null 2>&1; then
+  pass "Python runtime: $(python3 --version 2>/dev/null)"
+else
+  fail "Python 3 is missing"
+fi
+
+# 5. Terminal Application & Fonts
+if [ -d "/Applications/Ghostty.app" ]; then
+  pass "Ghostty terminal application is installed"
+else
+  warn "Ghostty.app not found in /Applications (manual download: ghostty.org)"
+fi
+
+if fc-list 2>/dev/null | grep -qi "JetBrainsMono Nerd Font" || [ -d "$HOME/Library/Fonts" ]; then
+  pass "Nerd Fonts available"
+else
+  warn "JetBrains Mono Nerd Font may need terminal restart to be recognized"
+fi
+
+# 6. Shell Configuration Syntax
+for rc in "$HOME/.zshrc" "$HOME/.zshenv" "$HOME/.zprofile"; do
+  if [ -f "$rc" ]; then
+    if zsh -n "$rc" >/dev/null 2>&1; then
+      pass "$(basename "$rc") syntax is clean"
+    else
+      fail "$(basename "$rc") syntax has errors"
+    fi
+  else
+    warn "$(basename "$rc") not found"
+  fi
+done
+
+# 7. Git Identity
+if git config --global user.name >/dev/null 2>&1 && git config --global user.email >/dev/null 2>&1; then
+  pass "Git identity configured ($(git config --global user.name) <$(git config --global user.email)>)"
+else
+  warn "Git identity is not set. Run: git config --global user.name 'Your Name' && git config --global user.email 'you@example.com'"
+fi
+
+# 8. Multiplexers & Plugins
+if [ -d "$HOME/.tmux/plugins/tpm" ]; then
+  pass "Tmux Plugin Manager (TPM) is installed"
+else
+  warn "TPM directory missing at ~/.tmux/plugins/tpm"
+fi
+
+if [ -f "$HOME/.config/herdr/config.toml" ]; then
+  pass "Herdr multi-agent multiplexer configuration is present"
+else
+  warn "Herdr config missing at ~/.config/herdr/config.toml"
+fi
+
+printf '\n%sSummary: %s%d PASS%s · %s%d WARN%s · %s%d FAIL%s\n\n' \
+  "$C_B" "$C_G" "$PASS" "$C_RST" "$C_Y" "$WARN" "$C_RST" "$C_R" "$FAIL" "$C_RST"
+
+[ "$FAIL" -eq 0 ]

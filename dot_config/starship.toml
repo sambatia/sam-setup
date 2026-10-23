@@ -1,4 +1,15 @@
+add_newline = false
+
 "$schema" = 'https://starship.rs/config-schema.json'
+
+# scan_timeout is a CEILING, not a fixed delay: Starship returns as soon as the
+# scan finishes, so a higher value adds no steady-state latency. Normal scans
+# complete within a few milliseconds, but 100ms still allowed three rare
+# warnings across 30 terminal sessions (2026-09-02): two immediately after a
+# Deep Idle wake and one during other transient contention. Use 250ms to
+# absorb cold APFS and multi-pane redraw stalls while retaining a finite bound
+# for unhealthy paths.
+scan_timeout = 250
 
 format = """
 [](red)\
@@ -26,7 +37,6 @@ $conda\
 $time\
 [ ](fg:lavender)\
 $cmd_duration\
-$line_break\
 $character"""
 
 palette = 'catppuccin_mocha'
@@ -152,8 +162,10 @@ time_format = "%R"
 style = "bg:lavender"
 format = '[[  $time ](fg:crust bg:lavender)]($style)'
 
+# Two-line prompt (enabled 2026-07-03, phase 7): info bar on line 1, input on
+# line 2 — keeps the typing area at column 0 regardless of segment width.
 [line_break]
-disabled = true
+disabled = false
 
 [character]
 disabled = false
@@ -165,12 +177,15 @@ vimcmd_replace_symbol = '[❮](bold fg:lavender)'
 vimcmd_visual_symbol = '[❮](bold fg:yellow)'
 
 [cmd_duration]
-show_milliseconds = true
+show_milliseconds = false
 format = " in $duration "
 style = "bg:lavender"
 disabled = false
-show_notifications = true
-min_time_to_notify = 45000
+# Notifications off: starship blocks the prompt for ~2 s while it posts one
+# (measured 2026-09-23: 2025 ms at --cmd-duration=45000, 28 ms with this off;
+# notification_timeout does not help). That was the "2 s stall after exiting
+# a TUI" — every first prompt after a command of 45 s or more.
+show_notifications = false
 
 [palettes.catppuccin_mocha]
 rosewater = "#f5e0dc"
@@ -283,4 +298,3 @@ surface0 = "#363a4f"
 base = "#24273a"
 mantle = "#1e2030"
 crust = "#181926"
-

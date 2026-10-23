@@ -1,0 +1,11 @@
+# workmux owns repository worktrees; Agent Manager owns its private sessions.
+agent: codex
+nerdfont: true
+status_format: false
+# Default sibling <project>__worktrees directory stays outside the repository.
+# No files, secrets, setup hooks, or credentials are copied by this global config.
+merge_keep: true
+panes:
+  - command: <agent>
+    focus: true
+  - split: horizontal

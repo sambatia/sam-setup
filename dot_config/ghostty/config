@@ -1,19 +1,50 @@
-# Ghostty — terminal config (sam-setup).
-# Matches the Starship prompt: Catppuccin Mocha + a JetBrains Mono Nerd Font
-# (installed via the Brewfile). Override anything in ~/.config/ghostty/config.local.
+# Ghostty terminal configuration (sam-setup)
+# Matches the Starship prompt: Catppuccin Mocha + JetBrains Mono Nerd Font.
+# Kept intentionally small: fast startup, tmux-friendly keys, readable colors.
 
-font-family = JetBrainsMono Nerd Font
-font-size = 14
-theme = catppuccin-mocha
+# Official JetBrains Mono for text; Ghostty's embedded Symbols Nerd Font
+# preserves icons and private-use glyphs without a patched text face.
+font-family = JetBrainsMono Nerd Font Mono
+font-size = 13
 
-background-opacity = 0.96
-window-padding-x = 10
-window-padding-y = 10
-cursor-style = bar
-mouse-hide-while-typing = true
-copy-on-select = clipboard
+theme = Catppuccin Mocha
 
-# Treat Option as Alt (so word-jumping etc. work) on macOS
-macos-option-as-alt = true
+# macOS Tahoe: Ghostty's native fullscreen titlebar uses a separate AppKit
+# overlay that intercepts Herdr's first row when only one Ghostty tab exists.
+# The Tahoe-specific integrated tabs titlebar preserves native Ghostty tabs and
+# keeps Herdr clickable without permanent terminal padding.
+macos-titlebar-style = tabs
+cursor-style = block
+cursor-style-blink = true
 
+# Glassy background: 0.9 opacity, 16px blur
+background-blur-radius = 16
+background-opacity = 0.9
+
+# Herdr, tmux, and editors paint explicit cell backgrounds. Without this,
+# their panes remain opaque even though the Ghostty window has opacity.
+background-opacity-cells = true
+
+# Dims inactive splits so focus pane pops
+unfocused-split-opacity = 0.5
+window-padding-x = 8
+window-padding-y = 6
+window-inherit-working-directory = true
+
+# Keep close confirmation on to avoid accidental tmux/session loss.
+confirm-close-surface = true
+
+# Left Option works as Alt for shell navigation; right Option remains available
+# for macOS character input.
+macos-option-as-alt = left
+
+shell-integration = detect
+
+# Native Ghostty splits/tabs use Command, so they do not collide with tmux C-a.
+keybind = super+d=new_split:right
+keybind = super+shift+d=new_split:down
+keybind = super+t=new_tab
+keybind = super+w=close_surface
+
+# Local overrides (optional, never committed)
 config-file = ?config.local

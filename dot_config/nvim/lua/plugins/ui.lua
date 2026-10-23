@@ -1,33 +1,67 @@
 return {
-  -- Keymap discoverability
-  { 'folke/which-key.nvim', event = 'VeryLazy', opts = { preset = 'helix' } },
-
-  -- QoL suite: input (replaces archived dressing.nvim), notifier, picker, etc.
   {
-    'folke/snacks.nvim',
-    priority = 1000,
-    lazy = false,
-    opts = {
-      input = { enabled = true },
-      notifier = { enabled = true },
-      picker = { enabled = true },
-      quickfile = { enabled = true },
-      bigfile = { enabled = true },
-      words = { enabled = true },
-      indent = { enabled = true },
-      scope = { enabled = true },
-    },
+    "nvim-mini/mini.hipatterns",
+    opts = function(_, opts)
+      -- Colorizer already owns ordinary hex colors. This extra adds Tailwind
+      -- class highlighting without a second set of hex-color extmarks.
+      opts.highlighters.hex_color = nil
+      opts.highlighters.shorthand = nil
+    end,
   },
-
-  -- Diagnostics / quickfix list
   {
-    'folke/trouble.nvim',
-    cmd = 'Trouble',
-    opts = {},
+    "catgoose/nvim-colorizer.lua",
+    cmd = {
+      "ColorizerToggle",
+      "ColorizerAttachToBuffer",
+      "ColorizerDetachFromBuffer",
+      "ColorizerReloadAllBuffers",
+    },
+    ft = {
+      "css",
+      "scss",
+      "sass",
+      "html",
+      "javascript",
+      "javascriptreact",
+      "typescript",
+      "typescriptreact",
+      "lua",
+    },
     keys = {
-      { '<leader>xx', '<cmd>Trouble diagnostics toggle<CR>', desc = 'Diagnostics (Trouble)' },
-      { '<leader>xX', '<cmd>Trouble diagnostics toggle filter.buf=0<CR>', desc = 'Buffer diagnostics (Trouble)' },
-      { '<leader>xq', '<cmd>Trouble qflist toggle<CR>', desc = 'Quickfix (Trouble)' },
+      { "<leader>uH", "<cmd>ColorizerToggle<cr>", desc = "Toggle color highlights" },
+    },
+    opts = {
+      filetypes = {
+        "css",
+        "scss",
+        "sass",
+        "html",
+        "javascript",
+        "javascriptreact",
+        "typescript",
+        "typescriptreact",
+        "lua",
+      },
+      lazy_load = true,
+      user_commands = true,
+      options = {
+        parsers = {
+          css = true,
+          css_fn = true,
+          names = { enable = false },
+          tailwind = {
+            enable = false,
+            lsp = { enable = false },
+          },
+        },
+        display = {
+          mode = "background",
+          -- Colorizer is authoritative for these filetypes; do not render a
+          -- second set of Neovim LSP document-color extmarks.
+          disable_document_color = true,
+        },
+        debounce_ms = 40,
+      },
     },
   },
 }

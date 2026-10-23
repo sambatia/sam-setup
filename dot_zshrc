@@ -1,40 +1,109 @@
-# ~/.zshrc — shareable shell config (sam-setup).
+# ~/.zshrc — modular, high-performance macOS terminal shell (sam-setup)
 #
-# The shareable core of Sam's shell: Homebrew, Starship prompt, the zsh quality-
-# of-life plugins, modern CLI aliases, and tool init. NO secrets, NO machine- or
-# work-specific bits — those stay in YOUR ~/.zshrc.local (sourced at the bottom)
-# or, for secrets, the macOS Keychain (see the note near the end).
+# Clean, modern, ownership-aware Zsh configuration:
+#   Homebrew CLIs → mise runtimes → Ghostty integration → Starship prompt
+#   Modular ~/.zshrc.d extensions → TTY-guarded modern replacements → Atuin/Zoxide
+#
+# Custom local overrides belong in ~/.zshrc.local (sourced at the bottom).
 
-# ── Homebrew ──────────────────────────────────────────────────────────────────
+export FASTOOZ_NO_TIPS=1
+
+# ── Homebrew ─────────────────────────────────────────────────────────────────
 export HOMEBREW_PREFIX="${HOMEBREW_PREFIX:-/opt/homebrew}"
-[[ -x "$HOMEBREW_PREFIX/bin/brew" ]] && eval "$("$HOMEBREW_PREFIX/bin/brew" shellenv)"
+if [[ -z "${FASTOOZ_HOMEBREW_SHELLENV_READY:-}" && -x "$HOMEBREW_PREFIX/bin/brew" ]]; then
+  eval "$("$HOMEBREW_PREFIX/bin/brew" shellenv)"
+  export FASTOOZ_HOMEBREW_SHELLENV_READY=1
+elif [[ -z "${FASTOOZ_HOMEBREW_SHELLENV_READY:-}" && -x /usr/local/bin/brew ]]; then
+  eval "$(/usr/local/bin/brew shellenv)"
+  export FASTOOZ_HOMEBREW_SHELLENV_READY=1
+fi
 
-# ── PATH ──────────────────────────────────────────────────────────────────────
-export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
+# ── Ghostty shell integration ────────────────────────────────────────────────
+if [[ -o interactive && -n "${GHOSTTY_RESOURCES_DIR:-}" &&
+      -r "$GHOSTTY_RESOURCES_DIR/shell-integration/zsh/ghostty-integration" ]] &&
+   (( ! ${+parameters[_ghostty_state]} )); then
+  source "$GHOSTTY_RESOURCES_DIR/shell-integration/zsh/ghostty-integration"
+fi
 
-# ── Editor ────────────────────────────────────────────────────────────────────
-export EDITOR="nvim"
-export VISUAL="nvim"
+typeset -g _BP="${HOMEBREW_PREFIX:-/opt/homebrew}"
+
+# ── PATH Configuration ───────────────────────────────────────────────────────
+typeset -gU path
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$HOME/.local/bin:$HOME/bin:$BUN_INSTALL/bin:$PATH"
+
+# Optional Rust toolchain
+if [[ -f "$HOME/.cargo/env" ]]; then
+  source "$HOME/.cargo/env"
+  path=("$HOME/.cargo/bin" ${path:#"$HOME/.cargo/bin"})
+fi
+
+# ── Optional Zsh plugin safety gate ──────────────────────────────────────────
+# Validate third-party plugins in a clean child before mutating interactive shell.
+_zsh_plugin_loader="$HOME/.zshrc.d/dot_optional-plugin-loader.zsh"
+[[ ! -r "$_zsh_plugin_loader" ]] && _zsh_plugin_loader="$HOME/.zshrc.d/.optional-plugin-loader.zsh"
+_zsh_plugin_loader_available=0
+if [[ -r "$_zsh_plugin_loader" ]] && source "$_zsh_plugin_loader"; then
+  _zsh_plugin_loader_available=1
+fi
+
+# zsh-autocomplete must load before Oh My Zsh compdef calls
+if (( _zsh_plugin_loader_available )); then
+  terminal_source_optional_zsh_plugin zsh-autocomplete \
+    "${_BP}/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh"
+fi
+
+# ── Oh My Zsh ────────────────────────────────────────────────────────────────
+if [[ -d "$HOME/.oh-my-zsh" ]]; then
+  zstyle ':omz:update' mode disabled
+  export ZSH="$HOME/.oh-my-zsh"
+  ZSH_THEME=""
+  plugins=(git)
+  source "$ZSH/oh-my-zsh.sh" 2>/dev/null || true
+fi
 
 # ── Prompt: Starship ──────────────────────────────────────────────────────────
-command -v starship >/dev/null 2>&1 && eval "$(starship init zsh)"
+if command -v starship >/dev/null 2>&1; then
+  eval "$(starship init zsh)"
+  export STARSHIP_LOG=error
+fi
 
-# ── Zsh quality-of-life plugins (installed via Homebrew) ──────────────────────
-for _p in zsh-autosuggestions/zsh-autosuggestions.zsh \
-          zsh-syntax-highlighting/zsh-syntax-highlighting.zsh; do
-  [[ -r "$HOMEBREW_PREFIX/share/$_p" ]] && source "$HOMEBREW_PREFIX/share/$_p"
-done
-unset _p
+# ── Zsh autosuggestions ──────────────────────────────────────────────────────
+if (( _zsh_plugin_loader_available )); then
+  terminal_source_optional_zsh_plugin zsh-autosuggestions \
+    "${_BP}/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
+fi
 
-# ── Aliases — modern CLI replacements ─────────────────────────────────────────
-command -v eza     >/dev/null 2>&1 && { alias ls='eza --icons'; alias ll='eza --icons -la'; alias la='eza --icons -a'; alias lt='eza --icons --tree'; }
-command -v bat     >/dev/null 2>&1 && alias cat='bat'
-command -v btop    >/dev/null 2>&1 && alias top='btop'
+# ── Editor ────────────────────────────────────────────────────────────────────
+if command -v nvim >/dev/null 2>&1; then
+  export EDITOR="nvim"
+  export VISUAL="nvim"
+fi
+
+# ── Core Tool Integrations ───────────────────────────────────────────────────
+command -v direnv  >/dev/null 2>&1 && eval "$(direnv hook zsh)"
+command -v zoxide  >/dev/null 2>&1 && eval "$(zoxide init zsh)"
+command -v atuin   >/dev/null 2>&1 && eval "$(atuin init zsh)"
+command -v carapace >/dev/null 2>&1 && eval "$(carapace _carapace zsh)" 2>/dev/null || true
+
+# ── Aliases — TTY guarded ─────────────────────────────────────────────────────
+# Only replace coreutils when running in an interactive terminal.
+# Non-interactive / socket runs fall back to standard coreutils to avoid hangs.
+if [[ -t 1 ]]; then
+  command -v eza     >/dev/null 2>&1 && alias ls='eza --icons --group-directories-first'
+  command -v eza     >/dev/null 2>&1 && alias ll='eza --icons -la --group-directories-first --git'
+  command -v eza     >/dev/null 2>&1 && alias la='eza --icons -a --group-directories-first'
+  command -v eza     >/dev/null 2>&1 && alias lt='eza --icons --tree --group-directories-first'
+  command -v bat     >/dev/null 2>&1 && alias cat='bat'
+  command -v btop    >/dev/null 2>&1 && alias top='btop'
+  command -v lazygit >/dev/null 2>&1 && alias lg='lazygit'
+fi
+alias pls='command ls'
+alias pcat='command cat'
 command -v nvim    >/dev/null 2>&1 && alias vim='nvim'
-command -v lazygit >/dev/null 2>&1 && alias lg='lazygit'
 command -v gping   >/dev/null 2>&1 && alias ping='gping'
 
-# ── Aliases — git ─────────────────────────────────────────────────────────────
+# ── Aliases — Git ─────────────────────────────────────────────────────────────
 alias gs='git status'
 alias ga='git add .'
 alias gc='git commit -m'
@@ -43,30 +112,66 @@ alias gb='git branch'
 alias gd='git diff'
 alias gl='git log --oneline -10'
 
-# ── Aliases — python ──────────────────────────────────────────────────────────
+# ── Aliases — Python ──────────────────────────────────────────────────────────
 alias python='python3'
 
-# ── Yazi wrapper (cd to the dir you quit in) ──────────────────────────────────
+# ── Yazi wrapper (cd to the dir on exit) ──────────────────────────────────────
 y() {
-  local tmp; tmp="$(mktemp -t yazi-cwd.XXXXXX)"
-  yazi "$@" --cwd-file="$tmp"
-  [[ -s "$tmp" ]] && cd "$(<"$tmp")"
+  local tmp; tmp="$(mktemp -t yazi-cwd.XXXXXX)" || return 1
+  command yazi "$@" --cwd-file="$tmp"
+  if [[ -s "$tmp" ]]; then
+    local cwd; cwd="$(cat "$tmp")"
+    [[ -n "$cwd" && "$cwd" != "$PWD" && -d "$cwd" ]] && builtin cd -- "$cwd"
+  fi
   rm -f "$tmp"
 }
 
-# ── Tool init (each guarded — only runs if the tool is installed) ─────────────
-command -v direnv >/dev/null 2>&1 && eval "$(direnv hook zsh)"
-[[ -f ~/.fzf.zsh ]] && source ~/.fzf.zsh
-command -v atuin  >/dev/null 2>&1 && eval "$(atuin init zsh)"
-command -v mise   >/dev/null 2>&1 && eval "$(mise activate zsh)"
-[[ -f "$HOME/.cargo/env" ]] && source "$HOME/.cargo/env"
-# zoxide stays last (it wraps `cd`)
-command -v zoxide >/dev/null 2>&1 && eval "$(zoxide init zsh --cmd cd)"
+# ── Chrome debug launcher ────────────────────────────────────────────────────
+chrome-debug() {
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+    --remote-debugging-port=9222 \
+    --user-data-dir="$HOME/.chrome-debug-profile" \
+    "$@"
+}
 
-# ── Secrets: macOS Keychain, never this file ──────────────────────────────────
-# Put API keys in the Keychain and read them at runtime, e.g.:
-#   export MY_API_KEY="$(security find-generic-password -a "$USER" -s MY_API_KEY -w 2>/dev/null)"
-# Never commit a secret into a dotfile.
+# ── Load Modular Extensions from ~/.zshrc.d/ ─────────────────────────────────
+_zshrc_root="${ZDOTDIR:-$HOME}"
+_zshrc_module_dir="${_zshrc_root}/.zshrc.d"
+_zshrc_module_loader="${_zshrc_module_dir}/dot_module-loader.zsh"
+[[ ! -r "$_zshrc_module_loader" ]] && _zshrc_module_loader="${_zshrc_module_dir}/.module-loader.zsh"
+_zshrc_module_manifest="${_zshrc_module_dir}/dot_module-order"
+[[ ! -r "$_zshrc_module_manifest" ]] && _zshrc_module_manifest="${_zshrc_module_dir}/.module-order"
 
-# ── Your machine-local overrides (gitignored, never shipped) ──────────────────
+if [[ -r "$_zshrc_module_loader" && -r "$_zshrc_module_manifest" ]]; then
+  source "$_zshrc_module_loader"
+  terminal_load_zsh_modules "$_zshrc_module_dir" "$_zshrc_module_manifest" 2>/dev/null || true
+  unfunction terminal_load_zsh_modules terminal_validate_zsh_modules _terminal_zsh_module_error 2>/dev/null
+fi
+unset _zshrc_root _zshrc_module_dir _zshrc_module_loader _zshrc_module_manifest
+
+# ── mise (polyglot runtime manager) ──────────────────────────────────────────
+# Clean slate activation so mise shims consistently own Node/pnpm/agent CLIs
+if command -v mise >/dev/null 2>&1; then
+  unset __MISE_ORIG_PATH __MISE_DIFF __MISE_SESSION
+  path=("${(@)path:#$HOME/.local/share/mise/installs/*}")
+  path=("${(@)path:#$HOME/.local/share/mise/shims}")
+  eval "$(mise activate zsh)"
+fi
+
+# ── Syntax Highlighting (must be the final widget integration) ───────────────
+if (( _zsh_plugin_loader_available )); then
+  terminal_source_optional_zsh_plugin zsh-syntax-highlighting \
+    "${_BP}/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+fi
+unfunction terminal_preflight_zsh_plugin terminal_source_optional_zsh_plugin \
+  _terminal_zsh_plugin_name_valid _terminal_resolve_zsh_plugin \
+  _terminal_zsh_plugin_skip 2>/dev/null
+unset _zsh_plugin_loader _zsh_plugin_loader_available _BP
+
+# ── Dedicated Eza Aliases ────────────────────────────────────────────────────
+if [[ -o interactive && -r "$HOME/.config/zsh/aliases/eza.zsh" ]]; then
+  source "$HOME/.config/zsh/aliases/eza.zsh"
+fi
+
+# ── Machine-Local Overrides (never committed, gitignored) ────────────────────
 [[ -f "$HOME/.zshrc.local" ]] && source "$HOME/.zshrc.local"

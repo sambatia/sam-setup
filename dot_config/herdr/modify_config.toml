@@ -1,0 +1,22 @@
+#!/bin/sh
+# chezmoi modify_ script for ~/.config/herdr/config.toml.
+#
+# Herdr rewrites this file itself whenever the theme is switched in its UI, and
+# the theme is a mood setting, not infrastructure. chezmoi pipes the live file
+# to this script on stdin; it emits the managed content from
+# .chezmoitemplates/herdr-config.toml but keeps the live [theme] name, so a
+# theme switch is never drift and `chezmoi apply` never reverts it. Every other
+# key stays managed: edit the template, not this script.
+set -eu
+managed="$CHEZMOI_SOURCE_DIR/.chezmoitemplates/herdr-config.toml"
+live_theme=$(awk '/^\[theme\]/{f=1;next} f&&/^\[/{exit} f&&/^name = /{print;exit}' -)
+if [ -n "$live_theme" ]; then
+  awk -v t="$live_theme" '
+    /^\[theme\]/ {f=1}
+    f && /^\[/ && !/^\[theme\]/ {f=0}
+    f && /^name = / {print t; next}
+    {print}
+  ' "$managed"
+else
+  cat "$managed"
+fi

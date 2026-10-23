@@ -1,0 +1,15 @@
+#!/bin/sh
+# fleet-lint: ast-grep fleet ruleset (~/.config/fleet-rules). Run inside a repo.
+#   fleet-lint [ast-grep scan flags] [paths]   whole repo (or paths)
+#   fleet-lint --changed <ref> [flags]         only .ts files changed since merge-base(ref, HEAD)
+#   fleet-lint --test                           ruleset self-test
+cfg="$HOME/.config/fleet-rules/sgconfig.yml"
+case "$1" in
+  --test) exec ast-grep test -c "$cfg" --skip-snapshot-tests ;;
+  --changed)
+    base=$(git merge-base "$2" HEAD) || exit 1; shift 2
+    files=$(git diff --name-only --diff-filter=ACMR "$base" HEAD -- '*.ts')
+    [ -z "$files" ] && { echo "fleet-lint: no changed .ts files since $base" >&2; exit 0; }
+    exec ast-grep scan -c "$cfg" "$@" $files ;;
+esac
+exec ast-grep scan -c "$cfg" "$@"

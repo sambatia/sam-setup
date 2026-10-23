@@ -1,0 +1,916 @@
+#!/bin/bash
+
+# Discover idle Zsh panes conservatively. Mutation is opt-in and is added only
+# after the same discovery path has completed successfully.
+
+set -u -o pipefail
+
+stat_mode_and_size() {
+	local value
+
+	if value="$(/usr/bin/stat -f '%Lp %z' "$1" 2>/dev/null)"; then
+		printf '%s\n' "$value"
+		return 0
+	fi
+	/usr/bin/stat -c '%a %s' "$1" 2>/dev/null
+}
+
+usage() {
+	cat <<'EOF'
+Usage: herdr-refresh-safe-shell-panes [OPTIONS]
+
+Preview or refresh Herdr panes whose complete foreground process set is Zsh.
+
+Options:
+  --dry-run             Preview only (default).
+  --apply               Refresh eligible panes.
+  --clear               Clear each pane after validation, then refresh it.
+  --clear-only          Clear eligible panes without replacing their shells.
+  --exclude-pane ID     Never dispatch to this pane (repeatable).
+  --session NAME        Select a named Herdr session.
+  --timeout-ms N        Acknowledgement timeout in milliseconds (default: 15000).
+  --quiet               Suppress routine apply output; errors remain visible.
+  --verbose             Include safe process-name detail.
+  -h, --help            Show this help.
+EOF
+}
+
+mode="dry-run"
+clear_only=0
+clear_requested=0
+session_name=""
+timeout_ms=15000
+verbose=0
+quiet=0
+excluded_panes=("__sentinel__")
+
+valid_pane_id() {
+	[[ "$1" =~ ^[A-Za-z0-9_-]+:[A-Za-z0-9_-]+$ ]]
+}
+
+while (($# > 0)); do
+	case "$1" in
+	--dry-run)
+		mode="dry-run"
+		shift
+		;;
+	--apply)
+		mode="apply"
+		shift
+		;;
+	--clear)
+		clear_requested=1
+		shift
+		;;
+	--clear-only)
+		clear_only=1
+		shift
+		;;
+	--exclude-pane)
+		if (($# < 2)); then
+			printf '%s\n' 'herdr-refresh: --exclude-pane requires an ID' >&2
+			exit 2
+		fi
+		if ! valid_pane_id "$2"; then
+			printf 'herdr-refresh: invalid pane ID: %s\n' "$2" >&2
+			exit 2
+		fi
+		excluded_panes+=("$2")
+		shift 2
+		;;
+	--session)
+		if (($# < 2)); then
+			printf '%s\n' 'herdr-refresh: --session requires a name' >&2
+			exit 2
+		fi
+		session_name="$2"
+		if [[ ! "$session_name" =~ ^[A-Za-z0-9._-]{1,64}$ ]]; then
+			printf 'herdr-refresh: invalid session name: %s\n' "$session_name" >&2
+			exit 2
+		fi
+		shift 2
+		;;
+	--timeout-ms)
+		if (($# < 2)); then
+			printf '%s\n' 'herdr-refresh: --timeout-ms requires a value' >&2
+			exit 2
+		fi
+		timeout_ms="$2"
+		if [[ ! "$timeout_ms" =~ ^[0-9]+$ ]] || ((timeout_ms < 100 || timeout_ms > 60000)); then
+			printf 'herdr-refresh: invalid timeout: %s\n' "$timeout_ms" >&2
+			exit 2
+		fi
+		shift 2
+		;;
+	--verbose | -v)
+		verbose=1
+		shift
+		;;
+	--quiet)
+		quiet=1
+		shift
+		;;
+	--help | -h)
+		usage
+		exit 0
+		;;
+	*)
+		printf 'herdr-refresh: unknown argument: %s\n' "$1" >&2
+		usage >&2
+		exit 2
+		;;
+	esac
+done
+
+if ((clear_only > 0 && clear_requested > 0)); then
+	printf '%s\n' 'herdr-refresh: --clear and --clear-only cannot be combined' >&2
+	exit 2
+fi
+
+if ((quiet > 0)) && [[ "$mode" != "apply" ]]; then
+	printf '%s\n' 'herdr-refresh: --quiet requires --apply' >&2
+	exit 2
+fi
+
+required_commands=(herdr jq)
+if [[ "$mode" == "apply" ]]; then
+	required_commands+=(shasum)
+fi
+for required_command in "${required_commands[@]}"; do
+	if ! command -v "$required_command" >/dev/null 2>&1; then
+		printf 'herdr-refresh: required command not found: %s\n' "$required_command" >&2
+		exit 2
+	fi
+done
+
+worker_path="${HOME}/.local/bin/zsh-refresh-current"
+resolver_path="${HOME}/.local/libexec/herdr-refresh-client"
+if [[ "$mode" == "apply" && ! -x "$worker_path" ]]; then
+	printf 'herdr-refresh: worker is unavailable: %s\n' "$worker_path" >&2
+	exit 2
+fi
+if [[ ! -x "$resolver_path" ]]; then
+	printf 'herdr-refresh: compatibility resolver is unavailable: %s\n' "$resolver_path" >&2
+	exit 2
+fi
+
+herdr_binary="$(command -v herdr)"
+
+herdr_cmd() {
+	if [[ -n "$session_name" ]]; then
+		command "$herdr_binary" --session "$session_name" "$@"
+	else
+		command "$herdr_binary" "$@"
+	fi
+}
+
+discovered=0
+eligible=0
+excluded=0
+skipped=0
+refreshed=0
+failed=0
+failure_reasons=("__sentinel__")
+diagnostic_writer="${HOME}/.local/bin/refresh-doctor"
+
+remember_failure_reason() {
+	local reason="$1"
+
+	if [[ "$reason" =~ ^[a-z0-9-]{1,64}$ ]]; then
+		failure_reasons+=("$reason")
+	else
+		failure_reasons+=("controller-failed")
+	fi
+}
+
+persist_controller_failure() {
+	local original_status="$1"
+	local reason
+	local -a record_args
+
+	[[ "$mode" == "apply" ]] || return 0
+	if ((${#failure_reasons[@]} == 1)); then
+		failure_reasons+=("controller-failed")
+	fi
+	record_args=(
+		--record
+		--component controller
+		--exit-status "$original_status"
+		--discovered "$discovered"
+		--eligible "$eligible"
+		--excluded "$excluded"
+		--skipped "$skipped"
+		--refreshed "$refreshed"
+		--failed "$failed"
+	)
+	for reason in "${failure_reasons[@]:1}"; do
+		record_args+=(--reason "$reason")
+	done
+
+	if [[ -x "$diagnostic_writer" ]] &&
+		command "$diagnostic_writer" "${record_args[@]}" >/dev/null 2>&1; then
+		printf '%s\n' \
+			'herdr-refresh: saved a redacted failure record; run refresh-doctor' >&2
+	else
+		printf '%s\n' \
+			'herdr-refresh: could not save the redacted failure record' >&2
+	fi
+	return 0
+}
+
+# A stopped server is the one discovery failure with a plain cause: nothing is
+# wrong with refresh, Herdr is simply not running (after a reboot, or from a
+# terminal outside any Herdr session). Say so with the boot time instead of
+# leaving the raw JSON error as the only clue (2026-09-17: macOS 27 rebooted
+# overnight and two refresh runs read as a regression).
+last_boot_time() {
+	local raw
+
+	if raw="$(command sysctl -n kern.boottime 2>/dev/null)" && [[ "$raw" == *"} "* ]]; then
+		printf '%s\n' "${raw##*\} }"
+		return 0
+	fi
+	if raw="$(command uptime -s 2>/dev/null)" && [[ -n "$raw" ]]; then
+		printf '%s\n' "$raw"
+		return 0
+	fi
+	return 1
+}
+
+explain_server_not_running() {
+	local boot
+
+	if boot="$(last_boot_time)"; then
+		printf '%s\n' \
+			"herdr-refresh: no Herdr server is running; refresh needs a live Herdr session (this Mac last booted ${boot})" >&2
+	else
+		printf '%s\n' \
+			'herdr-refresh: no Herdr server is running; refresh needs a live Herdr session' >&2
+	fi
+	printf '%s\n' \
+		"herdr-refresh: start 'herdr' first, then run refresh again from a Herdr pane" >&2
+}
+
+is_excluded() {
+	local candidate="$1"
+	local excluded
+	for excluded in "${excluded_panes[@]:1}"; do
+		[[ "$candidate" == "$excluded" ]] && return 0
+	done
+	return 1
+}
+
+tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/herdr-refresh.XXXXXX")" || {
+	printf '%s\n' 'herdr-refresh: could not create diagnostic directory' >&2
+	remember_failure_reason "temporary-directory-failed"
+	persist_controller_failure 2
+	exit 2
+}
+pending_pids=("__sentinel__")
+# shellcheck disable=SC2317,SC2329 # Invoked indirectly by the traps below.
+cleanup() {
+	local pending_pid
+	for pending_pid in "${pending_pids[@]:1}"; do
+		if [[ "$pending_pid" =~ ^[0-9]+$ ]]; then
+			kill "$pending_pid" 2>/dev/null || true
+			wait "$pending_pid" 2>/dev/null || true
+		fi
+	done
+	rm -rf -- "$tmp_dir"
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+if ! /bin/chmod 700 "$tmp_dir"; then
+	printf '%s\n' 'herdr-refresh: could not secure diagnostic directory' >&2
+	remember_failure_reason "temporary-directory-unsafe"
+	persist_controller_failure 2
+	exit 2
+fi
+
+resolver_args=(--read-only)
+if [[ "$mode" == "apply" ]]; then
+	resolver_args=(--ensure-cache)
+fi
+if [[ -n "$session_name" ]]; then
+	resolver_args+=(--session "$session_name")
+fi
+if ((quiet > 0)); then
+	resolver_args+=(--quiet)
+fi
+resolver_err="${tmp_dir}/resolver.err"
+if ! herdr_binary="$(command "$resolver_path" "${resolver_args[@]}" 2>"$resolver_err")"; then
+	printf '%s\n' 'herdr-refresh: compatible client resolution failed' >&2
+	sed -n '1,20p' "$resolver_err" >&2
+	remember_failure_reason "compatible-client-unavailable"
+	persist_controller_failure 2
+	exit 2
+fi
+if [[ -z "$herdr_binary" || ! -x "$herdr_binary" ]]; then
+	printf '%s\n' 'herdr-refresh: compatibility resolver returned an invalid client' >&2
+	remember_failure_reason "compatible-client-invalid"
+	persist_controller_failure 2
+	exit 2
+fi
+sed -n '1,20p' "$resolver_err" >&2
+
+pane_list_err="${tmp_dir}/pane-list.err"
+if ! pane_list_json="$(herdr_cmd pane list 2>"$pane_list_err")"; then
+	printf '%s\n' 'herdr-refresh: pane discovery failed' >&2
+	sed -n '1,40p' "$pane_list_err" >&2
+	if grep -q '"code":"server_not_running"' "$pane_list_err"; then
+		explain_server_not_running
+		remember_failure_reason "herdr-server-not-running"
+	fi
+	remember_failure_reason "pane-discovery-failed"
+	persist_controller_failure 2
+	exit 2
+fi
+
+if ! printf '%s' "$pane_list_json" | jq -e . >/dev/null 2>&1; then
+	printf '%s\n' 'herdr-refresh: invalid pane-list JSON' >&2
+	remember_failure_reason "pane-json-invalid"
+	persist_controller_failure 2
+	exit 2
+fi
+
+if ! printf '%s' "$pane_list_json" | jq -e '
+  (.result.panes | type == "array") and
+  (.result.panes | all(.[]; (.pane_id | type == "string")))
+' >/dev/null 2>&1; then
+	printf '%s\n' 'herdr-refresh: invalid pane-list schema' >&2
+	remember_failure_reason "pane-schema-invalid"
+	persist_controller_failure 2
+	exit 2
+fi
+
+if ! pane_ids="$(printf '%s' "$pane_list_json" | jq -r '.result.panes | map(.pane_id) | unique | .[]')"; then
+	printf '%s\n' 'herdr-refresh: could not extract pane IDs' >&2
+	remember_failure_reason "pane-id-extraction-failed"
+	persist_controller_failure 2
+	exit 2
+fi
+
+panes=("__sentinel__")
+while IFS= read -r pane_id; do
+	[[ -n "$pane_id" ]] || continue
+	if ! valid_pane_id "$pane_id"; then
+		printf 'herdr-refresh: invalid pane ID in discovery response: %s\n' "$pane_id" >&2
+		remember_failure_reason "pane-id-invalid"
+		persist_controller_failure 2
+		exit 2
+	fi
+	panes+=("$pane_id")
+done <<<"$pane_ids"
+
+# One process-table snapshot per inspection pass. Herdr reports each pane's
+# shell_pid; a stopped direct child of that shell is a stopped job the shell
+# would refuse to replace, so it can be skipped without typing into the pane.
+# The probe is advisory: when the snapshot or shell_pid is unavailable, the
+# owning shell's own job-table gate still refuses replacement. Running
+# background children are left to that gate, because a disowned process is
+# indistinguishable from a job from outside the shell.
+process_snapshot=""
+take_process_snapshot() {
+	process_snapshot="$(/bin/ps -A -o pid=,ppid=,stat= 2>/dev/null)" || process_snapshot=""
+}
+
+stopped_children_of() {
+	printf '%s\n' "$process_snapshot" | /usr/bin/awk -v parent="$1" '
+		$2 == parent && $3 ~ /^T/ { printf "%s%s", sep, $1; sep = "," }
+	'
+}
+
+# A JSON-quoted pane label for job skips, so the user can find the pane.
+# Control characters (C0, DEL, C1) become "?" before truncation; @json then
+# escapes quotes and backslashes, so the label cannot drive the terminal.
+pane_label_field() {
+	local label
+
+	label="$(printf '%s' "$pane_list_json" | jq -r --arg pane "$1" '
+	  first(.result.panes[]
+	    | select(.pane_id == $pane)
+	    | [.label?, .terminal_title_stripped?][]
+	    | strings
+	    | select(length > 0))
+	  | explode
+	  | map(if . < 32 or (. >= 127 and . < 160) then 63 else . end)
+	  | implode
+	  | .[0:40]
+	  | @json
+	' 2>/dev/null)" || return 0
+	[[ -n "$label" ]] && printf ' label=%s' "$label"
+	return 0
+}
+
+report_job_skip() {
+	local pane_id="$1" reason="$2" pids="${3:-}"
+
+	printf 'SKIP %s reason=%s' "$pane_id" "$reason"
+	[[ -z "$pids" ]] || printf ' pid=%s' "$pids"
+	pane_label_field "$pane_id"
+	printf '%s\n' ' (run jobs -l in that pane; fg resumes a job, kill %N ends it)'
+}
+
+inspect_names=""
+inspect_reason=""
+inspect_stopped_pids=""
+inspect_pane() {
+	local inspected_pane="$1"
+	local diagnostic_suffix="$2"
+	local process_json
+	local process_err="${tmp_dir}/process-${diagnostic_suffix}.err"
+	local parsed_info
+	local inspect_state
+	local shell_pid
+
+	inspect_names=""
+	inspect_reason=""
+	inspect_stopped_pids=""
+	if ! process_json="$(herdr_cmd pane process-info --pane "$inspected_pane" 2>"$process_err")"; then
+		inspect_reason="process-info-unavailable"
+		return 2
+	fi
+
+	# Herdr omits foreground_processes when foreground ownership is unknown.
+	# Leave that pane untouched; malformed replies still abort the whole pass.
+	if ! parsed_info="$(printf '%s' "$process_json" | jq -r --arg pane "$inspected_pane" '
+	  .result as $result
+	  | if ($result | type) == "object" and
+	       ($result.type == "pane_process_info") and
+	       ($result.process_info | type == "object") and
+	       ($result.process_info.pane_id == $pane) and
+	       ($result.process_info | has("foreground_processes") | not)
+	    then
+	      "foreground-unknown\n\n"
+	    elif ($result | type) != "object" or
+	         ($result.process_info | type) != "object" or
+	         ($result.process_info.foreground_processes | type) != "array"
+	    then
+	      error("invalid-process-info")
+	    else
+	      ($result.process_info.foreground_processes
+	       | map(.name? // .argv0? // .argv[0]? // null)) as $names
+	      | ($result.process_info.foreground_processes as $processes
+	         | (($processes | length) > 0) and
+	           all($processes[];
+	             (.name? // .argv0? // .argv[0]? // null) as $name
+	             | ($name | type == "string") and
+	               (($name | length) > 0) and
+	               ((($name | split("/")[-1]) == "zsh") or
+	                (($name | split("/")[-1]) == "-zsh"))
+	           )) as $is_idle_zsh
+	      | ($result.process_info.shell_pid
+	         | if (type == "number" and . > 1 and . == floor) then tostring else "" end) as $spid
+	      | (if $is_idle_zsh then "eligible" else "foreground-not-idle-zsh" end) + "\n" +
+	        ($names | tojson) + "\n" +
+	        $spid
+	    end
+	' 2>/dev/null)"; then
+		inspect_reason="invalid-process-info"
+		return 2
+	fi
+
+	{
+		IFS= read -r inspect_state
+		IFS= read -r inspect_names
+		IFS= read -r shell_pid
+	} <<<"$parsed_info"
+
+	case "$inspect_state" in
+	foreground-unknown)
+		inspect_reason="foreground-unknown"
+		return 1
+		;;
+	foreground-not-idle-zsh)
+		inspect_reason="foreground-not-idle-zsh"
+		return 1
+		;;
+	eligible) ;;
+	*)
+		inspect_reason="invalid-process-info"
+		return 2
+		;;
+	esac
+
+	if [[ "$shell_pid" =~ ^[0-9]+$ ]]; then
+		inspect_stopped_pids="$(stopped_children_of "$shell_pid")"
+		if [[ -n "$inspect_stopped_pids" ]]; then
+			inspect_reason="stopped-job"
+			return 1
+		fi
+	fi
+	return 0
+}
+
+print_summary() {
+	((quiet == 0)) || return 0
+	printf 'Summary: discovered=%d eligible=%d excluded=%d skipped=%d refreshed=%d failed=%d\n' \
+		"$discovered" "$eligible" "$excluded" "$skipped" "$refreshed" "$failed"
+}
+
+inspection_errors=0
+eligible_panes=("__sentinel__")
+
+if ((quiet == 0)); then
+	printf 'Mode: %s\n' "$mode"
+fi
+
+take_process_snapshot
+
+# Complete a read-only inspection pass before any mutation. This prevents a
+# partial process-info outage from being mistaken for a safe empty selection.
+for pane_id in "${panes[@]:1}"; do
+	((discovered += 1))
+
+	if is_excluded "$pane_id"; then
+		if ((quiet == 0)); then
+			printf 'EXCLUDE %s reason=caller\n' "$pane_id"
+		fi
+		((excluded += 1))
+		continue
+	fi
+
+	if inspect_pane "$pane_id" "initial-${discovered}"; then
+		if ((quiet == 0)); then
+			printf 'ELIGIBLE %s' "$pane_id"
+			if ((verbose > 0)); then
+				printf ' foreground=%s' "$inspect_names"
+			fi
+			printf '\n'
+		fi
+		((eligible += 1))
+		eligible_panes+=("$pane_id")
+	else
+		inspect_status=$?
+		if [[ "$inspect_reason" == stopped-job ]]; then
+			report_job_skip "$pane_id" stopped-job "$inspect_stopped_pids"
+		elif ((quiet == 0 || inspect_status == 2)); then
+			printf 'SKIP %s reason=%s' "$pane_id" "$inspect_reason"
+			if ((verbose > 0)); then
+				printf ' foreground=%s' "${inspect_names:-unknown}"
+			fi
+			printf '\n'
+		fi
+		((skipped += 1))
+		if ((inspect_status == 2)); then
+			((inspection_errors += 1))
+		fi
+	fi
+done
+
+if ((inspection_errors > 0)); then
+	failed="$inspection_errors"
+	print_summary
+	printf '%s\n' 'Aborted: pane inspection was incomplete; no panes were changed.' >&2
+	remember_failure_reason "process-inspection-failed"
+	persist_controller_failure 2
+	exit 2
+fi
+
+check_acknowledgement() {
+	local ack_file="$1"
+	local expected_digest="$2"
+	local actual_digest
+	local ack_meta
+	local ack_mode
+	local ack_size
+
+	if [[ ! -e "$ack_file" && ! -L "$ack_file" ]]; then
+		return 1
+	fi
+	if [[ ! -f "$ack_file" || -L "$ack_file" ]]; then
+		return 2
+	fi
+	if ! ack_meta="$(stat_mode_and_size "$ack_file")"; then
+		return 2
+	fi
+	IFS=' ' read -r ack_mode ack_size <<<"$ack_meta"
+	if [[ "$ack_mode" != 600 ]] ||
+		[[ "$ack_size" != 65 && "$ack_size" != 78 && "$ack_size" != 82 ]]; then
+		return 2
+	fi
+	if ! IFS= read -r actual_digest <"$ack_file"; then
+		return 2
+	fi
+	case "$actual_digest" in
+	"$expected_digest") [[ "$ack_size" == 65 ]] && return 0 ;;
+	"pending-jobs:$expected_digest") [[ "$ack_size" == 78 ]] && return 3 ;;
+	"preflight-failed:$expected_digest") [[ "$ack_size" == 82 ]] && return 4 ;;
+	*) return 2 ;;
+	esac
+	return 2
+}
+
+skip_pending_jobs() {
+	report_job_skip "$1" pending-jobs
+	((eligible -= 1))
+	((skipped += 1))
+}
+
+resolve_existing_acknowledgement() {
+	local pane_id="$1"
+	local ack_file="$2"
+	local expected_digest="$3"
+	local completed_attempts="$4"
+	local acknowledgement_status
+
+	check_acknowledgement "$ack_file" "$expected_digest"
+	acknowledgement_status=$?
+	case "$acknowledgement_status" in
+	0)
+		if ((quiet == 0)); then
+			printf 'OK %s recovered=late-acknowledgement\n' "$pane_id"
+		fi
+		((refreshed += 1))
+		return 0
+		;;
+	1)
+		return 1
+		;;
+	3)
+		skip_pending_jobs "$pane_id"
+		return 0
+		;;
+	4)
+		printf 'FAIL %s reason=startup-preflight-failed attempts=%d\n' \
+			"$pane_id" "$completed_attempts"
+		remember_failure_reason "startup-preflight-failed"
+		((failed += 1))
+		return 4
+		;;
+	2)
+		printf 'FAIL %s reason=acknowledgement-invalid attempts=%d\n' \
+			"$pane_id" "$completed_attempts"
+		remember_failure_reason "acknowledgement-invalid"
+		((failed += 1))
+		return 2
+		;;
+	esac
+	return 2
+}
+
+if [[ "$mode" == "apply" ]]; then
+	run_token="$(date +%s)-$$-${RANDOM}-${tmp_dir##*.}"
+	worker_timeout_ms=$((timeout_ms * 4 / 5))
+	if ((worker_timeout_ms < 50)); then
+		worker_timeout_ms=50
+	fi
+	printf -v quoted_worker '%q' "$worker_path"
+	ack_index=0
+	job_panes=("__sentinel__")
+	job_ack_files=("__sentinel__")
+	job_digests=("__sentinel__")
+	job_commands=("__sentinel__")
+	job_dispatch_errs=("__sentinel__")
+	candidate_job_indexes=("__sentinel__")
+
+	# Allocate one stable command and acknowledgement identity per pane. Recovery
+	# rounds reuse these values so delayed and duplicate deliveries deduplicate at
+	# the worker's atomic acknowledgement publication boundary.
+	for pane_id in "${eligible_panes[@]:1}"; do
+		pane_token="${pane_id//:/_}"
+		((ack_index += 1))
+		challenge="herdr-refresh-${run_token}-${pane_token}"
+		digest="$(printf '%s' "$challenge" | shasum -a 256 | awk '{print $1}')"
+		if [[ ! "$digest" =~ ^[a-f0-9]{64}$ ]]; then
+			printf 'FAIL %s reason=acknowledgement-derivation-failed\n' "$pane_id"
+			remember_failure_reason "acknowledgement-derivation-failed"
+			((failed += 1))
+			continue
+		fi
+		ack_file="${tmp_dir}/ack-${pane_token}-${ack_index}"
+		printf -v quoted_ack_file '%q' "$ack_file"
+		printf -v quoted_challenge '%q' "$challenge"
+
+		remote_command=" command true 2>/dev/null; "
+		if ((clear_only == 0)); then
+			# This expansion must run in the target shell, not in a subshell or
+			# the worker: only that shell owns its running/stopped job table.
+			remote_command+='builtin zmodload zsh/parameter && '
+		fi
+		remote_command+="$quoted_worker"
+		if ((clear_only == 0)); then
+			# shellcheck disable=SC2016 # Expand in the owning Zsh, not here.
+			remote_command+=' --shell-job-count "${#jobstates}"'
+		fi
+		if ((clear_only > 0)); then
+			remote_command+=" --clear-only"
+		else
+			remote_command+=" --check --refresh-phase prepare --timeout-ms $worker_timeout_ms"
+		fi
+		remote_command+=" --ack-file $quoted_ack_file --challenge $quoted_challenge"
+		if ((clear_only == 0)); then
+			# Startup validation can run traps in the waiting parent shell.
+			# Re-read jobs before clearing or publishing the success digest.
+			remote_command+=" && $quoted_worker --refresh-phase finish"
+			# shellcheck disable=SC2016 # Expand in the owning Zsh, not here.
+			remote_command+=' --shell-job-count "${#jobstates}"'
+			if ((clear_requested > 0)); then
+				remote_command+=" --clear"
+			fi
+			remote_command+=" --ack-file $quoted_ack_file --challenge $quoted_challenge"
+			remote_command+=" && exec /bin/zsh -l"
+		fi
+
+		job_panes+=("$pane_id")
+		job_ack_files+=("$ack_file")
+		job_digests+=("$digest")
+		job_commands+=("$remote_command")
+		job_dispatch_errs+=("${tmp_dir}/dispatch-${pane_token}.err")
+		job_index=$((${#job_panes[@]} - 1))
+		candidate_job_indexes+=("$job_index")
+	done
+
+	attempt=1
+	max_attempts=2
+
+	# Recheck before every dispatch. Poll all pending acknowledgements for the
+	# round in one loop so latency is bounded by one timeout window without
+	# spawning a per-pane sleep-polling subshell storm.
+	while ((attempt <= max_attempts && ${#candidate_job_indexes[@]} > 1)); do
+		round_job_indexes=("__sentinel__")
+		round_dispatch_statuses=("__sentinel__")
+		round_ack_statuses=("__sentinel__")
+		next_job_indexes=("__sentinel__")
+		take_process_snapshot
+
+		for job_index in "${candidate_job_indexes[@]:1}"; do
+			pane_id="${job_panes[$job_index]}"
+			pane_token="${pane_id//:/_}"
+			ack_file="${job_ack_files[$job_index]}"
+			digest="${job_digests[$job_index]}"
+			if ((attempt > 1)); then
+				resolve_existing_acknowledgement \
+					"$pane_id" "$ack_file" "$digest" "$((attempt - 1))"
+				existing_acknowledgement_status=$?
+				if ((existing_acknowledgement_status != 1)); then
+					continue
+				fi
+			fi
+
+			inspect_pane "$pane_id" "recheck-${pane_token}-attempt-${attempt}"
+			recheck_status=$?
+			if ((recheck_status != 0)); then
+				if ((attempt > 1)); then
+					resolve_existing_acknowledgement \
+						"$pane_id" "$ack_file" "$digest" "$((attempt - 1))"
+					existing_acknowledgement_status=$?
+					if ((existing_acknowledgement_status != 1)); then
+						continue
+					fi
+					if ((recheck_status == 2)); then
+						recheck_reason="${inspect_reason}-before-retry"
+					else
+						recheck_reason="changed-before-retry"
+					fi
+					printf 'FAIL %s reason=%s attempts=%d\n' \
+						"$pane_id" "$recheck_reason" "$((attempt - 1))"
+					remember_failure_reason "$recheck_reason"
+					((failed += 1))
+					continue
+				fi
+				if ((recheck_status == 2)); then
+					recheck_reason="${inspect_reason}-before-dispatch"
+				else
+					recheck_reason="changed-before-dispatch"
+				fi
+				if [[ "$inspect_reason" == stopped-job ]]; then
+					report_job_skip "$pane_id" stopped-job "$inspect_stopped_pids"
+				elif ((quiet == 0 || recheck_status == 2)); then
+					printf 'SKIP %s reason=%s\n' "$pane_id" "$recheck_reason"
+				fi
+				((eligible -= 1))
+				((skipped += 1))
+				if ((recheck_status == 2)); then
+					remember_failure_reason "$recheck_reason"
+					((failed += 1))
+				fi
+				continue
+			fi
+
+			if ((attempt > 1)); then
+				resolve_existing_acknowledgement \
+					"$pane_id" "$ack_file" "$digest" "$((attempt - 1))"
+				existing_acknowledgement_status=$?
+				if ((existing_acknowledgement_status != 1)); then
+					continue
+				fi
+			fi
+
+			remote_command="${job_commands[$job_index]}"
+			dispatch_err="${job_dispatch_errs[$job_index]}"
+			herdr_cmd pane run "$pane_id" "$remote_command" >/dev/null 2>"$dispatch_err"
+			dispatch_status=$?
+			round_job_indexes+=("$job_index")
+			round_dispatch_statuses+=("$dispatch_status")
+			round_ack_statuses+=(1)
+		done
+
+		round_count=$((${#round_job_indexes[@]} - 1))
+		poll_attempts=$(((timeout_ms + 49) / 50))
+		while ((poll_attempts > 0 && round_count > 0)); do
+			unresolved_count=0
+			round_index=1
+			while ((round_index <= round_count)); do
+				if ((round_ack_statuses[round_index] == 1)); then
+					job_index="${round_job_indexes[$round_index]}"
+					ack_file="${job_ack_files[$job_index]}"
+					digest="${job_digests[$job_index]}"
+					check_acknowledgement "$ack_file" "$digest"
+					ack_status=$?
+					if ((ack_status != 1)); then
+						round_ack_statuses[round_index]="$ack_status"
+					else
+						((unresolved_count += 1))
+					fi
+				fi
+				((round_index += 1))
+			done
+			((unresolved_count == 0)) && break
+			/bin/sleep 0.05
+			((poll_attempts -= 1))
+		done
+
+		round_index=1
+		while ((round_index <= round_count)); do
+			job_index="${round_job_indexes[$round_index]}"
+			pane_id="${job_panes[$job_index]}"
+			dispatch_status="${round_dispatch_statuses[$round_index]}"
+			ack_status="${round_ack_statuses[$round_index]}"
+			case "$ack_status" in
+			3)
+				skip_pending_jobs "$pane_id"
+				;;
+			4)
+				printf 'FAIL %s reason=startup-preflight-failed attempts=%d\n' \
+					"$pane_id" "$attempt"
+				remember_failure_reason "startup-preflight-failed"
+				((failed += 1))
+				;;
+			0)
+				if ((quiet == 0)); then
+					if ((attempt > 1)); then
+						printf 'OK %s attempt=%d/%d\n' "$pane_id" "$attempt" "$max_attempts"
+					else
+						printf 'OK %s\n' "$pane_id"
+					fi
+				fi
+				((refreshed += 1))
+				;;
+			1)
+				if ((dispatch_status != 0)); then
+					failure_reason="dispatch-failed"
+				else
+					failure_reason="acknowledgement-timeout"
+				fi
+				if ((attempt < max_attempts)); then
+					next_job_indexes+=("$job_index")
+					if ((quiet == 0)); then
+						printf 'RETRY %s reason=%s timeout_ms=%d attempt=%d/%d\n' \
+							"$pane_id" "$failure_reason" "$timeout_ms" \
+							"$((attempt + 1))" "$max_attempts"
+					fi
+				else
+					printf 'FAIL %s reason=%s timeout_ms=%d attempts=%d\n' \
+						"$pane_id" "$failure_reason" "$timeout_ms" "$attempt"
+					remember_failure_reason "$failure_reason"
+					((failed += 1))
+				fi
+				;;
+			2)
+				printf 'FAIL %s reason=acknowledgement-invalid attempts=%d\n' \
+					"$pane_id" "$attempt"
+				remember_failure_reason "acknowledgement-invalid"
+				((failed += 1))
+				;;
+			*)
+				printf 'FAIL %s reason=acknowledgement-wait-error attempts=%d\n' \
+					"$pane_id" "$attempt"
+				remember_failure_reason "acknowledgement-wait-error"
+				((failed += 1))
+				;;
+			esac
+			((round_index += 1))
+		done
+
+		candidate_job_indexes=("${next_job_indexes[@]}")
+		((attempt += 1))
+	done
+fi
+
+print_summary
+
+if ((eligible == 0)); then
+	if ((quiet == 0)); then
+		printf '%s\n' 'No eligible panes.'
+	fi
+fi
+
+if ((failed > 0)); then
+	persist_controller_failure 1
+	exit 1
+fi
+exit 0

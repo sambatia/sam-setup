@@ -1,0 +1,12 @@
+#!/bin/bash
+
+set -u -o pipefail
+
+# Chezmoi owns this launcher; the standalone package owns its Python and Rich.
+net_health_executable="${XDG_DATA_HOME:-$HOME/.local/share}/net-health/current/bin/net-health"
+if [[ -x "$net_health_executable" ]]; then
+	exec "$net_health_executable" "$@"
+fi
+
+printf '%s\n' 'net-health: verified package installation is missing; see the net-health installation and recovery guide' >&2
+exit 2

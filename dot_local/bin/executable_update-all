@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+#
+# update-all — multi-runtime developer environment updater (sam-setup).
+#
+# Keeps Homebrew, mise runtimes, global node CLIs, Python uv tools,
+# Neovim plugins, tmux plugins, and dotfiles up to date in one command.
+#
+# Usage:
+#   update-all             # Run normal updates
+#   update-all --check     # Check for outdated packages without upgrading
+#   update-all --help      # Show help
+
+set -euo pipefail
+
+MODE="apply"
+for arg in "$@"; do
+  case "$arg" in
+    --check|-c) MODE="check" ;;
+    -h|--help)
+      sed -n '3,10p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+  esac
+done
+
+if [ -t 1 ]; then
+  C_B=$'\033[1m'; C_G=$'\033[32m'; C_Y=$'\033[33m'; C_C=$'\033[36m'; C_D=$'\033[2m'; C_RST=$'\033[0m'
+else
+  C_B=""; C_G=""; C_Y=""; C_C=""; C_D=""; C_RST=""
+fi
+
+say()  { printf '%s▸%s %s\n' "$C_C" "$C_RST" "$1"; }
+ok()   { printf '%s✓%s %s\n' "$C_G" "$C_RST" "$1"; }
+warn() { printf '%s!%s %s\n' "$C_Y" "$C_RST" "$1"; }
+
+printf '\n%s🔄 update-all%s %s(%s mode)%s\n\n' "$C_B" "$C_RST" "$C_D" "$MODE" "$C_RST"
+
+# 1. Homebrew
+if command -v brew >/dev/null 2>&1; then
+  say "Checking Homebrew packages and casks…"
+  brew update
+  if [ "$MODE" = "check" ]; then
+    brew outdated
+  else
+    brew upgrade
+    brew cleanup --prune=7
+    ok "Homebrew packages updated"
+  fi
+fi
+
+# 2. mise runtimes
+if command -v mise >/dev/null 2>&1; then
+  say "Checking mise runtimes and global tools…"
+  if [ "$MODE" = "check" ]; then
+    mise outdated || true
+  else
+    mise upgrade --yes
+    if mise task ls 2>/dev/null | grep -q "node-globals"; then
+      say "Updating global Node CLI utilities…"
+      mise run node-globals || warn "mise node-globals encountered a non-fatal issue"
+    fi
+    ok "mise runtimes and tools updated"
+  fi
+fi
+
+# 3. uv Python tools
+if command -v uv >/dev/null 2>&1; then
+  say "Checking uv standalone Python tools…"
+  if [ "$MODE" = "check" ]; then
+    uv tool list
+  else
+    uv tool upgrade --all || true
+    ok "uv standalone Python tools updated"
+  fi
+fi
+
+# 4. Neovim / LazyVim plugins
+if command -v nvim >/dev/null 2>&1 && [ -d "$HOME/.config/nvim" ]; then
+  say "Syncing Neovim Lazy plugins…"
+  if [ "$MODE" = "check" ]; then
+    nvim --headless '+Lazy check' +qa 2>/dev/null || true
+  else
+    nvim --headless '+Lazy! sync' +qa 2>/dev/null || true
+    ok "Neovim Lazy plugins synced"
+  fi
+fi
+
+# 5. Tmux / TPM plugins
+if [ -d "$HOME/.tmux/plugins/tpm" ]; then
+  say "Updating tmux TPM plugins…"
+  if [ "$MODE" = "apply" ]; then
+    "$HOME/.tmux/plugins/tpm/bin/update_plugins" all >/dev/null 2>&1 || true
+    ok "Tmux plugins updated"
+  fi
+fi
+
+# 6. Herdr plugins
+if command -v herdr >/dev/null 2>&1; then
+  say "Checking Herdr integrations…"
+  for integ in claude codex omp cursor opencode; do
+    herdr integration install "$integ" >/dev/null 2>&1 || true
+  done
+  ok "Herdr integrations refreshed"
+fi
+
+# 7. Chezmoi dotfiles
+if command -v chezmoi >/dev/null 2>&1 && [ -d "$HOME/.local/share/chezmoi" ]; then
+  say "Checking dotfiles repository…"
+  if [ "$MODE" = "check" ]; then
+    chezmoi diff || true
+  else
+    chezmoi update || true
+    ok "Dotfiles up to date"
+  fi
+fi
+
+# 8. Post-update verification
+say "Verifying shell syntax and core tools…"
+for f in "$HOME/.zshrc" "$HOME/.zshenv" "$HOME/.zprofile"; do
+  if [ -r "$f" ]; then
+    zsh -n "$f" && ok "$(basename "$f") syntax valid" || warn "$(basename "$f") syntax error"
+  fi
+done
+
+printf '\n%s✓ Update complete.%s Everything is fresh and healthy.\n\n' "$C_G" "$C_RST"

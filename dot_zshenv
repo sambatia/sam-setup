@@ -1,5 +1,14 @@
-# ~/.zshenv — loaded for ALL zsh invocations (incl. non-interactive).
-# Keep this minimal. No secrets here (use the Keychain — see ~/.zshrc).
+# ~/.zshenv — loaded for ALL zsh invocations (interactive and non-interactive).
+# Keep this fast and minimal. No aliases or slow commands belong here.
 
 # Respect XDG defaults.
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+
+# Ensure SSH, Mosh, and subshells can find Homebrew tools early.
+if [[ -z "${FASTOOZ_HOMEBREW_SHELLENV_READY:-}" && -x /opt/homebrew/bin/brew ]]; then
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+  export FASTOOZ_HOMEBREW_SHELLENV_READY=1
+elif [[ -z "${FASTOOZ_HOMEBREW_SHELLENV_READY:-}" && -x /usr/local/bin/brew ]]; then
+  eval "$(/usr/local/bin/brew shellenv)"
+  export FASTOOZ_HOMEBREW_SHELLENV_READY=1
+fi

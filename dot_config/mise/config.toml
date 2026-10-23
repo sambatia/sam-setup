@@ -1,21 +1,35 @@
 [tools]
-node = "24.16.0"
+"github:can1357/oh-my-pi" = "latest"
+node = "lts"
+"npm:@openai/codex" = "latest"
+"npm:typescript" = "latest"
+"npm:typescript-language-server" = "latest"
+# tree-sitter-cli downloads its actual binary in an npm `install` lifecycle
+# script. mise's embedded Aube installer denies lifecycle builds unless the
+# exact package is reviewed and allowlisted. Without this, the shim is hollow
+# and fails with `spawn .../tree-sitter ENOENT`. Required by nvim-treesitter's
+# `main` branch, which compiles parsers locally instead of bundling them.
+"npm:tree-sitter-cli" = { version = "latest", allow_builds = ["tree-sitter-cli"] }
 pnpm = "11.8.0"
+"github:librespeed/speedtest-cli" = "latest"
 
-# Global npm CLIs (the shareable AI-engineering + web-dev core). They live in
-# node's prefix, so they're tied to the node version above — after a node bump
-# (`mise use -g node@<newer>`) run `mise run node-globals` to reinstall.
-# This is a starter set: trim or extend to taste. (Work/account-specific tools
-# and eslint/prettier — decided-against in favour of biome — are intentionally out.)
 [tasks.node-globals]
-description = "Reinstall the global npm CLIs after a node major bump"
+description = "Reinstall global npm CLIs after a node major bump"
+# Codex, tree-sitter-cli, TypeScript, and TypeScript Language Server are separate
+# mise tools above; Claude Code uses its officially supported Homebrew
+# latest-channel cask. Do not install any of them into Node's global prefix.
 run = """
 npm install -g \
-  @anthropic-ai/claude-code @openai/codex @google/gemini-cli opencode-ai \
-  repomix \
+  @google/gemini-cli opencode-ai apidog-cli@2.2.8 \
+  @earendil-works/pi-coding-agent ccusage repomix gitnexus skills \
   @modelcontextprotocol/server-filesystem @modelcontextprotocol/server-memory \
-  @modelcontextprotocol/server-sequential-thinking @modelcontextprotocol/inspector \
-  @playwright/mcp @upstash/context7-mcp chrome-devtools-mcp \
-  wrangler vercel drizzle-kit turbo tsx typescript playwright tree-sitter-cli
+  @modelcontextprotocol/server-sequential-thinking \
+  @upstash/context7-mcp chrome-devtools-mcp mcp-omnisearch @railway/mcp-server \
+  wrangler vercel neon @railway/cli drizzle-kit turbo tsx ts-node \
+  inngest-cli playwright @modelcontextprotocol/inspector
 mise reshim
 """
+
+[settings]
+activate_aggressive = true
+lockfile = true

@@ -1,0 +1,34 @@
+# ~/.zprofile — login shell setup (sam-setup).
+# Loaded for login shells (both interactive and non-interactive).
+
+# Homebrew shell environment (Apple Silicon / Intel portable)
+if [[ -z "${FASTOOZ_HOMEBREW_SHELLENV_READY:-}" && -x /opt/homebrew/bin/brew ]]; then
+  eval "$(/opt/homebrew/bin/brew shellenv zsh)"
+  export FASTOOZ_HOMEBREW_SHELLENV_READY=1
+elif [[ -z "${FASTOOZ_HOMEBREW_SHELLENV_READY:-}" && -x /usr/local/bin/brew ]]; then
+  eval "$(/usr/local/bin/brew shellenv zsh)"
+  export FASTOOZ_HOMEBREW_SHELLENV_READY=1
+fi
+
+# Optional OrbStack / Docker path integration
+[[ -d "$HOME/.docker/bin" ]] && export PATH="$PATH:$HOME/.docker/bin"
+[[ -r "$HOME/.orbstack/shell/init.zsh" ]] && source "$HOME/.orbstack/shell/init.zsh" 2>/dev/null || true
+
+# ── mise shims for login NON-INTERACTIVE shells ─────────────────────────────
+# Login non-interactive zsh (`zsh -l -c`, scripts, launchd) never sources
+# ~/.zshrc, so `mise activate` doesn't run there. We activate shims here.
+if [[ $- != *i* ]] && command -v mise &>/dev/null; then
+  eval "$(mise activate zsh --shims)"
+fi
+
+# Ensure mise shims own managed runtimes, Homebrew owns general CLIs,
+# and all paths remain present once.
+typeset -gU path
+if [[ -d "$HOME/.local/share/mise/shims" ]]; then
+  path=("$HOME/.local/share/mise/shims" /opt/homebrew/bin /opt/homebrew/sbin $path)
+else
+  path=(/opt/homebrew/bin /opt/homebrew/sbin $path)
+fi
+
+# Local bin path
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac

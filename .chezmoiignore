@@ -19,3 +19,11 @@ home/**
 # clobber their local tweaks (the configs themselves source these if present):
 .zshrc.local
 .config/ghostty/config.local
+
+# Docs & tests inside config dirs
+.config/terminal_setup/docs/**
+.config/terminal_setup/tests/**
+.config/nvim/docs/**
+.config/nvim/tests/**
+.config/nvim/backups/**
+

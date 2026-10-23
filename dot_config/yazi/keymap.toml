@@ -1,0 +1,156 @@
+# Production keymap for Yazi 26.8.15+.
+# Keep q as the explicit exit path; the shell wrapper handles changing directory.
+
+[[mgr.prepend_keymap]]
+on   = "<Esc>"
+run  = "escape"
+desc = "Cancel the current operation"
+
+[[mgr.prepend_keymap]]
+on   = "q"
+run  = "quit"
+desc = "Quit Yazi"
+
+[[mgr.prepend_keymap]]
+on   = "<Enter>"
+run  = "plugin smart-enter"
+desc = "Enter a directory or open a file"
+
+[[mgr.prepend_keymap]]
+on   = "l"
+run  = "plugin smart-enter"
+desc = "Enter a directory or open a file"
+
+[[mgr.prepend_keymap]]
+on   = "f"
+run  = "plugin smart-filter"
+desc = "Filter continuously and open a unique match"
+
+[[mgr.prepend_keymap]]
+on   = "F"
+run  = "plugin jump-to-char"
+desc = "Jump to the next item by initial character"
+
+[[mgr.prepend_keymap]]
+on   = "a"
+run  = "plugin augment-command.create"
+desc = "Create and enter a directory or open a new file"
+
+[[mgr.prepend_keymap]]
+on   = "A"
+run  = "plugin augment-command.create -- --dir"
+desc = "Create a directory (Shift+A)"
+
+[[mgr.prepend_keymap]]
+on   = "p"
+run  = "plugin augment-command.paste -- --smart"
+desc = "Paste into the hovered directory or current directory"
+
+# Clipboard integration is explicit so normal Yazi yanks keep working for both
+# files and directories. The non-reserved adapter loads the package-managed
+# clipboard.yazi plugin, which currently exports regular files only.
+[[mgr.prepend_keymap]]
+on   = "<C-y>"
+run  = [ "yank", "plugin clipboard-sync -- --action=copy" ]
+desc = "Yank files and copy them to the macOS clipboard"
+
+[[mgr.prepend_keymap]]
+on   = "<C-p>"
+run  = "plugin clipboard-sync -- --action=paste"
+desc = "Paste files from the macOS clipboard"
+
+[[mgr.prepend_keymap]]
+on   = "T"
+run  = "plugin toggle-pane max-preview"
+desc = "Maximize or restore the preview pane"
+
+# Persist view preferences per directory.
+[[mgr.prepend_keymap]]
+on   = "."
+run  = [ "hidden toggle", "plugin pref-by-location -- save" ]
+desc = "Toggle hidden files and remember this location"
+
+[[mgr.prepend_keymap]]
+on   = [ "m", "s" ]
+run  = [ "linemode size", "plugin pref-by-location -- save" ]
+desc = "Show sizes and remember this location"
+
+[[mgr.prepend_keymap]]
+on   = [ "m", "p" ]
+run  = [ "linemode permissions", "plugin pref-by-location -- save" ]
+desc = "Show permissions and remember this location"
+
+[[mgr.prepend_keymap]]
+on   = [ "m", "b" ]
+run  = [ "linemode btime", "plugin pref-by-location -- save" ]
+desc = "Show birth times and remember this location"
+
+[[mgr.prepend_keymap]]
+on   = [ "m", "m" ]
+run  = [ "linemode mtime", "plugin pref-by-location -- save" ]
+desc = "Show modification times and remember this location"
+
+[[mgr.prepend_keymap]]
+on   = [ "m", "o" ]
+run  = [ "linemode owner", "plugin pref-by-location -- save" ]
+desc = "Show ownership and remember this location"
+
+[[mgr.prepend_keymap]]
+on   = [ "m", "n" ]
+run  = [ "linemode none", "plugin pref-by-location -- save" ]
+desc = "Hide the linemode and remember this location"
+
+[[mgr.prepend_keymap]]
+on   = [ ",", "m" ]
+run  = [ "sort mtime --reverse=no", "linemode mtime", "plugin pref-by-location -- save" ]
+desc = "Sort by modification time"
+
+[[mgr.prepend_keymap]]
+on   = [ ",", "M" ]
+run  = [ "sort mtime --reverse", "linemode mtime", "plugin pref-by-location -- save" ]
+desc = "Sort by modification time, newest first"
+
+[[mgr.prepend_keymap]]
+on   = [ ",", "b" ]
+run  = [ "sort btime --reverse=no", "linemode btime", "plugin pref-by-location -- save" ]
+desc = "Sort by birth time"
+
+[[mgr.prepend_keymap]]
+on   = [ ",", "B" ]
+run  = [ "sort btime --reverse", "linemode btime", "plugin pref-by-location -- save" ]
+desc = "Sort by birth time, newest first"
+
+[[mgr.prepend_keymap]]
+on   = [ ",", "e" ]
+run  = [ "sort extension --reverse=no", "plugin pref-by-location -- save" ]
+desc = "Sort by extension"
+
+[[mgr.prepend_keymap]]
+on   = [ ",", "a" ]
+run  = [ "sort alphabetical --reverse=no", "plugin pref-by-location -- save" ]
+desc = "Sort alphabetically"
+
+[[mgr.prepend_keymap]]
+on   = [ ",", "n" ]
+run  = [ "sort natural --reverse=no", "plugin pref-by-location -- save" ]
+desc = "Sort naturally"
+
+[[mgr.prepend_keymap]]
+on   = [ ",", "s" ]
+run  = [ "sort size --reverse=no", "linemode size", "plugin pref-by-location -- save" ]
+desc = "Sort by size"
+
+[[mgr.prepend_keymap]]
+on   = [ ",", "S" ]
+run  = [ "sort size --reverse", "linemode size", "plugin pref-by-location -- save" ]
+desc = "Sort by size, largest first"
+
+[[mgr.prepend_keymap]]
+on   = [ ",", "u" ]
+run  = "plugin pref-by-location -- toggle"
+desc = "Toggle per-location preference saving"
+
+[[mgr.prepend_keymap]]
+on   = [ ",", "R" ]
+run  = "plugin pref-by-location -- reset"
+desc = "Reset preferences for this location"

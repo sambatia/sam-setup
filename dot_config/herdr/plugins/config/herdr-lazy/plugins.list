@@ -1,0 +1,5 @@
+# Audited Herdr plugin set. Local links are maintained separately and are not pruned.
+natori-hrj/herdr-lazy
+# v0.1.0 peeled commit; commit pins are locally verifiable by Herdr Lazy.
+usrivastava92/herdr-wakeup/plugin@aa4bcdc626249eddb6bd620029f3916e07375ca0
+razajamil/herdr-plugin-workspace-manager
