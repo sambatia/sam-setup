@@ -594,9 +594,9 @@ As a final quick recap, here is the complete catalog of custom binaries, orchest
 
 | Command | Implementation | Description & Usage |
 | :--- | :--- | :--- |
-| **`refresh`** | Shell function & binary | Inspects every active Herdr pane. If a pane is idle (not running an editor, server, or active agent), it clears the screen and reloads a fresh shell safely, preserving your active command history and background jobs. |
-| **`refresh-dry`** | Shell function | Dry-run preview of `refresh` that reports which panes would be refreshed and explains why busy panes would be skipped. |
-| **`refresh-doctor`** | Executable CLI | Diagnoses Herdr multiplexer health, protocol version compatibility, IPC sockets, and logs failure reports. |
+| **`refresh`** | Shell function & binary | Fail-fast preflights the local shell, then inspects active Herdr panes with bounded concurrency (`--concurrency`, default `6`) and scope filters (`--here`, `--workspace`, `--session`, `--current-only`). Idle Zsh panes (without active agents, nested shells, editors, servers, or background/stopped jobs) are cleared and replaced safely, preserving history and jobs. |
+| **`refresh-dry`** | Shell function | Dry-run preview of `refresh` (supports `--here`, `--workspace`, `--session`, `--verbose`, `--timeout-ms`) that reports eligible panes and explains why busy panes would be skipped. |
+| **`refresh-doctor`** | Executable CLI | Diagnoses Herdr multiplexer health, protocol compatibility, refresh module status, dry-run preflight, and retained redacted failure reports (with remediation hints and `--clear-history`). |
 | **`clear-panes`** | Shell function | Clears scrollback across all Herdr panes simultaneously without reloading or interrupting the underlying shells. |
 | **`clear-panes-dry`**| Shell function | Dry-run preview of `clear-panes`. |
 | **`zsh-refresh-current`**| Executable CLI | Safely replaces the invoking shell with a clean shell instance without dropping terminal environment variables. |

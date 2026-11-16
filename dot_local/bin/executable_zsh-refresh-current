@@ -53,6 +53,10 @@ preflight_timeout_ms=10000
 
 while (($# > 0)); do
 	case "$1" in
+	--refresh-phase=*)
+		set -- --refresh-phase "${1#*=}" "${@:2}"
+		continue
+		;;
 	--refresh-phase)
 		if (($# < 2)) || [[ "$2" != prepare && "$2" != finish ]]; then
 			printf '%s\n' 'zsh-refresh-current: invalid refresh phase' >&2
@@ -60,6 +64,10 @@ while (($# > 0)); do
 		fi
 		refresh_phase="$2"
 		shift 2
+		;;
+	--shell-job-count=*)
+		set -- --shell-job-count "${1#*=}" "${@:2}"
+		continue
 		;;
 	--shell-job-count)
 		if (($# < 2)) || [[ ! "$2" =~ ^[0-9]+$ ]]; then
@@ -80,6 +88,10 @@ while (($# > 0)); do
 		clear_only=1
 		shift
 		;;
+	--ack-file=*)
+		set -- --ack-file "${1#*=}" "${@:2}"
+		continue
+		;;
 	--ack-file)
 		if (($# < 2)); then
 			printf '%s\n' 'zsh-refresh-current: --ack-file requires a value' >&2
@@ -88,6 +100,10 @@ while (($# > 0)); do
 		ack_file="$2"
 		shift 2
 		;;
+	--challenge=*)
+		set -- --challenge "${1#*=}" "${@:2}"
+		continue
+		;;
 	--challenge)
 		if (($# < 2)); then
 			printf '%s\n' 'zsh-refresh-current: --challenge requires a value' >&2
@@ -95,6 +111,10 @@ while (($# > 0)); do
 		fi
 		challenge="$2"
 		shift 2
+		;;
+	--timeout-ms=*)
+		set -- --timeout-ms "${1#*=}" "${@:2}"
+		continue
 		;;
 	--timeout-ms)
 		if (($# < 2)); then
@@ -189,14 +209,11 @@ fi
 ack_tmp=""
 tmp_dir=""
 preflight_pid=""
-watchdog_pid=""
 # shellcheck disable=SC2317,SC2329 # Invoked indirectly by the EXIT trap below.
 cleanup() {
-	if [[ "$watchdog_pid" =~ ^[0-9]+$ ]]; then
-		kill "$watchdog_pid" 2>/dev/null || true
-	fi
 	if [[ "$preflight_pid" =~ ^[0-9]+$ ]]; then
-		kill -KILL "$preflight_pid" 2>/dev/null || true
+		kill -TERM "$preflight_pid" 2>/dev/null || true
+		wait "$preflight_pid" 2>/dev/null || true
 	fi
 	if [[ -n "$ack_tmp" ]]; then
 		/bin/rm -f -- "$ack_tmp"
@@ -283,7 +300,6 @@ tmp_dir="$(mktemp -d "$tmp_base")" || {
 syntax_log="${tmp_dir}/syntax.log"
 startup_out="${tmp_dir}/startup.out"
 startup_err="${tmp_dir}/startup.err"
-timeout_flag="${tmp_dir}/preflight.timed-out"
 startup_marker="zsh-refresh-preflight-${$}-${RANDOM}"
 
 startup_files=(
@@ -291,7 +307,12 @@ startup_files=(
 	"${zdotdir}/.zprofile"
 	"${zdotdir}/.zshrc"
 	"${zdotdir}/.zlogin"
+	"${zdotdir}/.config/terminal_setup/additions.zsh"
 )
+for startup_file in "${zdotdir}/.config/zsh/aliases"/*.zsh; do
+	[[ -f "$startup_file" ]] || continue
+	startup_files+=("$startup_file")
+done
 
 syntax_failed=0
 syntax_check_files=()
@@ -321,10 +342,10 @@ if [[ -e "$optional_plugin_loader" || -L "$optional_plugin_loader" ]]; then
 fi
 
 if ((${#module_files[@]} > 0)); then
-	if [[ ! -f "$module_loader" ]]; then
+	if [[ ! -f "$module_loader" || -L "$module_loader" ]]; then
 		printf 'zsh-module-loader: loader unavailable: %s\n' "$module_loader" >>"$syntax_log"
 		syntax_failed=1
-	elif ! /bin/zsh -n "$module_loader" >>"$syntax_log" 2>&1; then
+	elif ! /bin/zsh -fn "$module_loader" >>"$syntax_log" 2>&1; then
 		syntax_failed=1
 	elif ! /bin/zsh -f "$module_loader" --validate \
 		"$module_dir" "$module_manifest" >>"$syntax_log" 2>&1; then
@@ -358,34 +379,76 @@ if [[ -z "$check_term" || "$check_term" == "dumb" ]]; then
 	check_term="xterm-256color"
 fi
 
-TERM="$check_term" REFRESH_SENTINEL="$startup_marker" /bin/zsh -lic \
-	'print -r -- "$REFRESH_SENTINEL"' \
-	>"$startup_out" 2>"$startup_err" &
-preflight_pid=$!
 timeout_seconds="$(awk -v milliseconds="$preflight_timeout_ms" 'BEGIN { printf "%.3f", milliseconds / 1000 }')"
-/usr/bin/perl -e '
-  use strict;
-  use warnings;
-  my ($seconds, $pid, $flag) = @ARGV;
-  select undef, undef, undef, $seconds;
-  if (kill 0, $pid) {
-    open my $handle, ">", $flag or exit 2;
-    close $handle;
-    kill "TERM", $pid;
-    select undef, undef, undef, 0.1;
-    kill "KILL", $pid if kill 0, $pid;
-  }
-' "$timeout_seconds" "$preflight_pid" "$timeout_flag" &
-watchdog_pid=$!
+TERM="$check_term" REFRESH_SENTINEL="$startup_marker" /usr/bin/perl \
+	-MPOSIX=:sys_wait_h,setsid -MTime::HiRes=alarm,sleep -e '
+	use strict;
+	use warnings;
+
+	my ($timeout, $out_path, $err_path) = @ARGV;
+	my $pid = fork();
+	exit 125 if !defined $pid;
+
+	if ($pid == 0) {
+		eval { setsid(); 1 } or exit 126;
+		open STDIN, "<", "/dev/null" or exit 126;
+		open STDOUT, ">", $out_path or exit 126;
+		open STDERR, ">", $err_path or exit 126;
+		exec { "/bin/zsh" } "/bin/zsh", "-lic", "print -r -- \"\$REFRESH_SENTINEL\"";
+		exit 126;
+	}
+
+	my $kill_group_immediate = sub {
+		kill "KILL", -$pid;
+		waitpid($pid, 0);
+	};
+
+	$SIG{TERM} = $SIG{INT} = $SIG{HUP} = sub {
+		$kill_group_immediate->();
+		exit 143;
+	};
+
+	my $timed_out = 0;
+	my $status;
+	my $result;
+	eval {
+		local $SIG{ALRM} = sub { $timed_out = 1; die "timeout\n"; };
+		alarm($timeout);
+		$result = waitpid($pid, 0);
+		$status = $?;
+		alarm(0);
+	};
+	alarm(0);
+
+	if ($timed_out) {
+		# Interactive zsh ignores SIGTERM; kill the process group with SIGKILL
+		# immediately so zsh cannot advance to subsequent startup lines.
+		$kill_group_immediate->();
+		exit 124;
+	}
+
+	exit 125 if !defined $result || $result == -1 || !defined $status;
+
+	if (kill("TERM", -$pid) > 0) {
+		sleep 0.01;
+		kill "KILL", -$pid;
+	}
+
+	if (WIFEXITED($status)) {
+		exit WEXITSTATUS($status);
+	}
+	if (WIFSIGNALED($status)) {
+		exit(128 + WTERMSIG($status));
+	}
+	exit 125;
+' "$timeout_seconds" "$startup_out" "$startup_err" &
+preflight_pid=$!
 
 wait "$preflight_pid"
 preflight_status=$?
 preflight_pid=""
-kill "$watchdog_pid" 2>/dev/null || true
-wait "$watchdog_pid" 2>/dev/null || true
-watchdog_pid=""
 
-if [[ -e "$timeout_flag" ]]; then
+if ((preflight_status == 124)); then
 	printf 'zsh-refresh-current: preflight timed out after %s ms\n' "$preflight_timeout_ms" >&2
 	exit 1
 fi
@@ -399,7 +462,11 @@ fi
 
 if ! grep -Fqx "$startup_marker" "$startup_out"; then
 	printf '%s\n' 'zsh-refresh-current: preflight failed (completion marker missing)' >&2
-	sed -n '1,80p' "$startup_err" >&2
+	if [[ -s "$startup_err" ]]; then
+		sed -n '1,80p' "$startup_err" >&2
+	else
+		printf '%s\n' 'zsh-refresh-current: hint: startup may have exited or called exec before finishing' >&2
+	fi
 	publish_prepare_failure
 	exit 1
 fi

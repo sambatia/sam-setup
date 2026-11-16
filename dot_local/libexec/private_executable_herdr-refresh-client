@@ -212,6 +212,43 @@ ensure_private_directory() {
 	private_directory_is_valid "$directory"
 }
 
+prune_cached_clients() {
+	local keep_dir="$1"
+	local other_keep_limit=2
+	local candidate
+	local kept_others=0
+
+	private_directory_is_valid "$cache_root" || return 0
+	while IFS= read -r candidate; do
+		[[ -n "$candidate" && -d "$candidate" && ! -L "$candidate" ]] || continue
+		[[ "${candidate%/*}" == "$cache_root" ]] || continue
+		if ((kept_others < other_keep_limit)); then
+			((kept_others += 1))
+			continue
+		fi
+		/bin/rm -rf -- "$candidate" 2>/dev/null || true
+	done < <(
+		/usr/bin/perl -e '
+			my ($root, $keep) = @ARGV;
+			opendir(my $dh, $root) or exit 0;
+			my @dirs;
+			while (my $entry = readdir($dh)) {
+				next if $entry =~ /^\./;
+				next unless $entry =~ /^[0-9]+\.[0-9]+\.[0-9]+(?:[.-][A-Za-z0-9.-]+)?-p[0-9]+$/;
+				my $path = "$root/$entry";
+				next if -l $path || !-d $path || $path eq $keep;
+				my $target = "$path/herdr";
+				my @st = lstat((-f $target && !-l $target) ? $target : $path);
+				push @dirs, [$st[9] // 0, $path];
+			}
+			closedir($dh);
+			for my $item (sort { ($b->[0] <=> $a->[0]) || ($b->[1] cmp $a->[1]) } @dirs) {
+				print "$item->[1]\n";
+			}
+		' "$cache_root" "$keep_dir" 2>/dev/null
+	)
+}
+
 cache_current_client() {
 	local source_client="$1"
 	local expected_version="$2"
@@ -239,6 +276,7 @@ cache_current_client() {
 	ensure_private_directory "$cache_root" || return 1
 	ensure_private_directory "$version_dir" || return 1
 	if validate_cached_client "$destination" "$expected_version" "$expected_protocol"; then
+		prune_cached_clients "$version_dir" || true
 		return 0
 	fi
 	cache_temp_parent="$version_dir"
@@ -254,6 +292,7 @@ cache_current_client() {
 	fi
 	cache_temp=""
 	cache_temp_parent=""
+	prune_cached_clients "$version_dir" || true
 	return 0
 }
 
@@ -296,6 +335,13 @@ sha256_file() {
 	return 127
 }
 
+fail_download() {
+	cleanup_download
+	download_dir=""
+	download_parent=""
+	fail "$1"
+}
+
 download_compatible_client() {
 	local expected_version="$1"
 	local expected_protocol="$2"
@@ -335,9 +381,7 @@ download_compatible_client() {
 	if ! command "$curl_binary" --proto '=https' --proto-redir '=https' \
 		-fsSL --retry 3 --connect-timeout 10 --max-time 30 \
 		-o "$metadata_file" "$api_url"; then
-		/bin/rm -f -- "$metadata_file" "$downloaded_file"
-		/bin/rmdir "$download_dir" 2>/dev/null || true
-		fail "could not fetch official Herdr v${expected_version} release metadata"
+		fail_download "could not fetch official Herdr v${expected_version} release metadata"
 	fi
 	asset_record="$(command jq -er \
 		--arg tag "v${expected_version}" \
@@ -357,55 +401,41 @@ download_compatible_client() {
         else
           error("expected exactly one matching release asset")
         end
-      ' "$metadata_file" 2>/dev/null)" || {
-		/bin/rm -f -- "$metadata_file" "$downloaded_file"
-		/bin/rmdir "$download_dir" 2>/dev/null || true
-		fail "official Herdr v${expected_version} release metadata was invalid"
-	}
+      ' "$metadata_file" 2>/dev/null)" ||
+		fail_download "official Herdr v${expected_version} release metadata was invalid"
 	IFS=$'\t' read -r asset_url digest_label expected_size <<<"$asset_record"
-	[[ "$asset_url" == "$expected_asset_url" ]] || {
-		/bin/rm -f -- "$metadata_file" "$downloaded_file"
-		/bin/rmdir "$download_dir" 2>/dev/null || true
-		fail 'official Herdr release metadata returned an unexpected asset URL'
-	}
-	[[ "$digest_label" =~ ^sha256:([a-f0-9]{64})$ ]] || {
-		/bin/rm -f -- "$metadata_file" "$downloaded_file"
-		/bin/rmdir "$download_dir" 2>/dev/null || true
-		fail 'official Herdr release asset did not provide a valid SHA-256 digest'
-	}
+	[[ "$asset_url" == "$expected_asset_url" ]] ||
+		fail_download 'official Herdr release metadata returned an unexpected asset URL'
+	[[ "$digest_label" =~ ^sha256:([a-f0-9]{64})$ ]] ||
+		fail_download 'official Herdr release asset did not provide a valid SHA-256 digest'
 	expected_digest="${BASH_REMATCH[1]}"
-	[[ "$expected_size" =~ ^[1-9][0-9]*$ ]] || {
-		/bin/rm -f -- "$metadata_file" "$downloaded_file"
-		/bin/rmdir "$download_dir" 2>/dev/null || true
-		fail 'official Herdr release asset did not provide a valid size'
-	}
+	[[ "$expected_size" =~ ^[1-9][0-9]*$ ]] ||
+		fail_download 'official Herdr release asset did not provide a valid size'
 
 	if ! command "$curl_binary" --proto '=https' --proto-redir '=https' \
 		-fsSL --retry 3 --connect-timeout 10 --max-time 120 \
 		-o "$downloaded_file" "$asset_url"; then
-		/bin/rm -f -- "$metadata_file" "$downloaded_file"
-		/bin/rmdir "$download_dir" 2>/dev/null || true
-		fail "could not download official Herdr v${expected_version} compatibility client"
+		fail_download "could not download official Herdr v${expected_version} compatibility client"
 	fi
 	actual_size="$(/usr/bin/wc -c <"$downloaded_file" | /usr/bin/tr -d ' ')" ||
-		fail 'could not measure downloaded Herdr compatibility client'
+		fail_download 'could not measure downloaded Herdr compatibility client'
 	actual_digest="$(sha256_file "$downloaded_file")" ||
-		fail 'could not hash downloaded Herdr compatibility client'
+		fail_download 'could not hash downloaded Herdr compatibility client'
 	if [[ "$actual_size" != "$expected_size" || "$actual_digest" != "$expected_digest" ]]; then
-		/bin/rm -f -- "$metadata_file" "$downloaded_file"
-		/bin/rmdir "$download_dir" 2>/dev/null || true
-		fail 'downloaded Herdr compatibility client failed integrity verification'
+		fail_download 'downloaded Herdr compatibility client failed integrity verification'
 	fi
-	/bin/chmod 700 "$downloaded_file" || fail 'could not secure downloaded Herdr compatibility client'
+	/bin/chmod 700 "$downloaded_file" ||
+		fail_download 'could not secure downloaded Herdr compatibility client'
 	client_identity_matches "$downloaded_file" "$expected_version" "$expected_protocol" ||
-		fail 'downloaded Herdr compatibility client reported the wrong version or protocol'
+		fail_download 'downloaded Herdr compatibility client reported the wrong version or protocol'
 	/bin/mv -f "$downloaded_file" "$destination" ||
-		fail 'could not publish downloaded Herdr compatibility client'
+		fail_download 'could not publish downloaded Herdr compatibility client'
 	cleanup_download
 	download_dir=""
 	download_parent=""
 	validate_cached_client "$destination" "$expected_version" "$expected_protocol" ||
 		fail 'published Herdr compatibility client failed validation'
+	prune_cached_clients "$version_dir" || true
 	if ((quiet == 0)); then
 		printf 'herdr-refresh: downloaded and verified Herdr %s compatibility client\n' \
 			"$expected_version" >&2

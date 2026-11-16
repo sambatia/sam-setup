@@ -27,9 +27,13 @@ stat_mode() {
 
 usage() {
 	cat <<'EOF'
-Usage: refresh-doctor
+Usage: refresh-doctor [--clear-history]
 
 Run read-only Herdr refresh health checks and show the latest redacted failure.
+
+Options:
+  --clear-history  Remove retained failure-*.json diagnostic records safely.
+  -h, --help       Show this help.
 EOF
 }
 
@@ -382,7 +386,119 @@ inspect_latest_record() {
 		printf '%s\n' 'latest_failure: invalid'
 		return 1
 	}
+	local record_count
+	record_count="$(
+		/usr/bin/find "$state_dir" -maxdepth 1 -type f -name 'failure-*.json' -print |
+			/usr/bin/wc -l | /usr/bin/tr -d ' '
+	)"
+	printf 'failure_records: %s\n' "${record_count:-1}"
 	printf 'latest_failure: %s\n' "$compact_record"
+}
+
+clear_history() {
+	local state_dir
+	local current_uid
+	local directory_uid
+	local directory_mode
+	local unsafe_record
+	local record
+	local removed=0
+
+	state_dir="$(resolve_state_dir)" || exit $?
+	if [[ ! -e "$state_dir" && ! -L "$state_dir" ]]; then
+		printf 'cleared_failure_records: 0\n'
+		return 0
+	fi
+	if [[ ! -d "$state_dir" || -L "$state_dir" ]]; then
+		printf '%s\n' 'refresh-doctor: unsafe diagnostic directory' >&2
+		return 2
+	fi
+	current_uid="$(/usr/bin/id -u)" || return 2
+	directory_uid="$(stat_uid "$state_dir")" || return 2
+	directory_mode="$(stat_mode "$state_dir")" || return 2
+	if [[ "$directory_uid" != "$current_uid" || "$directory_mode" != 700 ]]; then
+		printf '%s\n' 'refresh-doctor: diagnostic directory must be private' >&2
+		return 2
+	fi
+	unsafe_record="$(
+		/usr/bin/find "$state_dir" -maxdepth 1 \
+			-name 'failure-*.json' ! -type f -print |
+			/usr/bin/sed -n '1p'
+	)"
+	if [[ -n "$unsafe_record" ]]; then
+		printf '%s\n' 'refresh-doctor: unsafe diagnostic record' >&2
+		return 2
+	fi
+	while IFS= read -r record; do
+		[[ -n "$record" && -f "$record" && ! -L "$record" ]] || continue
+		/bin/rm -f -- "$record" || return 2
+		((removed += 1))
+	done < <(
+		/usr/bin/find "$state_dir" -maxdepth 1 -type f \
+			-name 'failure-*.json' -print | /usr/bin/sort
+	)
+	printf 'cleared_failure_records: %d\n' "$removed"
+}
+
+classify_controller_failure() {
+	local output="$1"
+	if [[ "$output" == *'"code":"server_not_running"'* ]] ||
+		[[ "$output" == *'no Herdr server is running'* ]]; then
+		printf '%s\n' 'herdr-server-not-running'
+	elif [[ "$output" == *'no validated Herdr'*'compatibility client is cached'* ]] ||
+		[[ "$output" == *'compatible client resolution failed'* ]]; then
+		printf '%s\n' 'compatible-client-missing'
+	elif [[ "$output" == *'pane inspection was incomplete'* ]] ||
+		[[ "$output" == *'process-info-unavailable'* ]] ||
+		[[ "$output" == *'invalid-process-info'* ]]; then
+		printf '%s\n' 'pane-inspection-failed'
+	elif [[ "$output" == *'required command not found'* ]] ||
+		[[ "$output" == *'is unavailable:'* ]]; then
+		printf '%s\n' 'missing-dependency'
+	else
+		printf '%s\n' 'controller-failed'
+	fi
+}
+
+classify_worker_failure() {
+	local output="$1"
+	if [[ "$output" == *'preflight failed (startup syntax)'* ]]; then
+		printf '%s\n' 'startup-syntax'
+	elif [[ "$output" == *'preflight failed (startup runtime)'* ]]; then
+		printf '%s\n' 'startup-runtime'
+	elif [[ "$output" == *'preflight failed (startup wrote to stderr)'* ]]; then
+		printf '%s\n' 'startup-stderr'
+	elif [[ "$output" == *'preflight failed (completion marker missing)'* ]]; then
+		printf '%s\n' 'completion-marker-missing'
+	elif [[ "$output" == *'preflight timed out'* ]]; then
+		printf '%s\n' 'startup-timeout'
+	elif [[ "$output" == *'zsh-module-loader:'* ]] ||
+		[[ "$output" == *'zsh-plugin-loader:'* ]]; then
+		printf '%s\n' 'module-validation'
+	else
+		printf '%s\n' 'worker-failed'
+	fi
+}
+
+check_refresh_module_integration() {
+	local zdotdir="${ZDOTDIR:-${HOME:-}}"
+	local module_dir="${zdotdir}/.zshrc.d"
+	local module_file="${module_dir}/herdr-refresh.zsh"
+	local manifest="${module_dir}/.module-order"
+
+	[[ -n "$zdotdir" && (-e "$module_file" || -L "$module_file") ]] || return 0
+	if [[ ! -f "$module_file" || -L "$module_file" ]] ||
+		! /bin/zsh -fn "$module_file" >/dev/null 2>&1; then
+		printf '%s\n' 'refresh_module: failed'
+		return 1
+	fi
+	if [[ -f "$manifest" && ! -L "$manifest" ]] &&
+		! /usr/bin/grep -Fxq 'herdr-refresh.zsh' "$manifest" 2>/dev/null; then
+		printf '%s\n' 'refresh_module: unlisted'
+		return 1
+	fi
+	printf '%s\n' 'refresh_module: ok'
+	return 0
 }
 
 # Herdr renames the labels in its human-readable `status` output between
@@ -428,8 +544,15 @@ sanitize_herdr_status() {
 run_doctor() {
 	local health_status=0
 	local client_version
-	local status_output
-	local sanitized_status
+	local status_output=""
+	local sanitized_status=""
+	local controller_output=""
+	local worker_output=""
+	local summary_line=""
+	local pane_ok=0
+	local shell_ok=0
+	local module_ok=1
+	local server_running=0
 	local controller="${HOME:-}/.local/bin/herdr-refresh-safe-shell-panes"
 	local worker="${HOME:-}/.local/bin/zsh-refresh-current"
 
@@ -445,32 +568,76 @@ run_doctor() {
 		/usr/bin/grep -q '^  restart_needed: no$' <<<"$sanitized_status"; then
 		printf '%s\n' 'herdr_status: ok'
 		printf '%s\n' "$sanitized_status"
+		server_running=1
 	else
 		printf '%s\n' 'herdr_status: failed'
 		if [[ -n "${sanitized_status:-}" ]]; then
 			printf '%s\n' "$sanitized_status"
+			/usr/bin/grep -q '^  status: running$' <<<"$sanitized_status" && server_running=1
 		fi
 		health_status=1
 	fi
 
-	if [[ -x "$controller" ]] &&
-		command "$controller" --dry-run >/dev/null 2>&1; then
+	if [[ ! -x "$controller" ]]; then
+		printf '%s\n' 'pane_preflight: failed'
+		printf '%s\n' 'pane_preflight_reason: controller-unavailable'
+		health_status=1
+	elif controller_output="$(command "$controller" --dry-run 2>&1)"; then
 		printf '%s\n' 'pane_preflight: ok'
+		pane_ok=1
+		summary_line="$(printf '%s\n' "$controller_output" |
+			/usr/bin/sed -nE 's/^Summary: (discovered=[0-9]+ eligible=[0-9]+ excluded=[0-9]+ skipped=[0-9]+) refreshed=[0-9]+ failed=[0-9]+$/\1/p' |
+			/usr/bin/sed -n '1p')"
+		if [[ -n "$summary_line" ]]; then
+			printf 'pane_summary: %s\n' "$summary_line"
+		fi
 	else
 		printf '%s\n' 'pane_preflight: failed'
+		printf 'pane_preflight_reason: %s\n' "$(classify_controller_failure "$controller_output")"
 		health_status=1
 	fi
 
-	if [[ -x "$worker" ]] &&
-		command "$worker" --check >/dev/null 2>&1; then
+	if [[ ! -x "$worker" ]]; then
+		printf '%s\n' 'shell_preflight: failed'
+		printf '%s\n' 'shell_preflight_reason: worker-unavailable'
+		health_status=1
+	elif worker_output="$(command "$worker" --check 2>&1)"; then
 		printf '%s\n' 'shell_preflight: ok'
+		shell_ok=1
 	else
 		printf '%s\n' 'shell_preflight: failed'
+		printf 'shell_preflight_reason: %s\n' "$(classify_worker_failure "$worker_output")"
+		health_status=1
+	fi
+
+	if ! check_refresh_module_integration; then
+		module_ok=0
 		health_status=1
 	fi
 
 	if ! inspect_latest_record; then
 		health_status=1
+	fi
+
+	if [[ "$client_version" == "unavailable" ]]; then
+		printf '%s\n' "remediation: install 'herdr' and verify it is on PATH"
+	elif [[ "$sanitized_status" == *'  status: stopped'* ]]; then
+		printf '%s\n' "remediation: start 'herdr' in a terminal before running refresh"
+	elif [[ "$sanitized_status" == *'  compatible: no'* ]]; then
+		printf '%s\n' 'remediation: run a mutating refresh to cache or fetch a compatible client'
+	elif [[ "$sanitized_status" == *'  restart_needed: yes'* ]]; then
+		printf '%s\n' 'remediation: restart the Herdr server manually when panes can exit'
+	elif [[ "$sanitized_status" == *'  server_binary_stale: yes'* ]]; then
+		printf '%s\n' 'remediation: Herdr server binary updated on disk; restart Herdr when convenient'
+	fi
+	if ((shell_ok == 0)); then
+		printf '%s\n' "remediation: run 'zsh-refresh-current --check' locally to inspect startup diagnostics"
+	fi
+	if ((pane_ok == 0 && server_running == 1)); then
+		printf '%s\n' "remediation: run 'refresh-dry --verbose' to inspect pane discovery"
+	fi
+	if ((module_ok == 0)); then
+		printf '%s\n' 'remediation: check ~/.zshrc.d/herdr-refresh.zsh syntax and ~/.zshrc.d/.module-order'
 	fi
 
 	if ((health_status == 0)); then
@@ -485,6 +652,10 @@ case "${1:-}" in
 --record)
 	shift
 	record_failure "$@"
+	;;
+--clear-history)
+	(($# == 1)) || fail_usage '--clear-history accepts no extra arguments'
+	clear_history
 	;;
 --help | -h)
 	usage

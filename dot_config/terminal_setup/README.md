@@ -47,33 +47,39 @@ bats ~/.config/terminal_setup/tests/reproducibility.bats
 
 ## Herdr Shell Refresh
 
-The refresh command safely reloads idle Zsh panes without sending input to panes running agents, editors, servers, TUIs, mixed process groups, or unknown foreground processes:
+The refresh command safely reloads idle Zsh panes without sending input to panes running agents, nested Zsh subshells, editors, servers, TUIs, mixed process groups, or unknown foreground processes:
 
 ```sh
-refresh             # Refresh eligible remote panes, then this shell.
+refresh             # Preflight this shell, refresh eligible remote panes, then replace this shell.
 refresh-dry         # Preview remote selection and preflight this shell.
+refresh --here      # Limit remote refresh to the current Herdr workspace.
+refresh --workspace w1  # Limit remote refresh to workspace w1.
+refresh --current-only  # Validate and replace only this shell.
 refresh --keep-scrollback  # Preserve prior scrollback; add no success status.
 refresh --clear     # Explicit compatibility spelling of the default.
-refresh --timeout-ms 20000 # Override each acknowledgement deadline for this run.
+refresh --timeout-ms 20000 # Override each acknowledgement / preflight deadline.
+refresh --concurrency 8    # Override parallel pane refresh window (1-32, default: 6).
 clear-panes         # Compatibility command: clear only; do not reload shells.
 clear-panes-dry     # Preview the clear-only selection.
 refresh-doctor      # Read-only compatibility, preflight, and failure report.
+refresh-doctor --clear-history # Remove retained redacted failure records safely.
 ```
 
 Shells opened before this deployment may still have the former aliases cached. Activate the managed functions once in such a shell with `source ~/.zshrc.d/herdr-refresh.zsh`, or start a new login shell.
 
-Plain `refresh` clears each successfully validated pane, passes the documented `HERDR_PANE_ID` to the controller as an exclusion, waits for all eligible remote panes, preflights the invoking shell as a child process, and replaces the invoking shell last. Mutating public commands are silent on success: they write no status marker, concealed text, or acknowledgement escape sequence into any pane. Use `refresh --keep-scrollback` to retain prior output without adding a successful refresh message. If any remote operation remains unresolved after its bounded recovery, or any acknowledgement, clear, or preflight fails terminally, the command returns nonzero, preserves the available diagnostics, and leaves the invoking shell intact.
+Plain `refresh` checks local jobs and validates the current shell's Zsh startup locally before mutating any remote pane so a broken `~/.zshrc` or module never sprays errors across dozens of panes. It then passes the documented `HERDR_PANE_ID` (resolving moved panes via `herdr pane current --current` when needed), refreshes eligible remote panes in a bounded sliding window (default concurrency `6`), re-validates and clears the invoking pane, refreshes moved `HERDR_*` context variables if applicable, and replaces the invoking shell last. Mutating public commands are silent on success: they write no status marker, concealed text, or acknowledgement escape sequence into any pane. Use `refresh --keep-scrollback` to retain prior output without adding a successful refresh message. If any remote operation remains unresolved after its bounded recovery, or any acknowledgement, clear, or preflight fails terminally, the command returns nonzero, preserves the available diagnostics, and leaves the invoking shell intact.
 
-Shells with jobs are never replaced. The invoking shell checks its own job table before any pane is touched and lists the blocking jobs (`jobs -l`); `refresh-dry` reports the same condition without stopping. For other panes, the owning shell rechecks `${#jobstates}` when the refresh command arrives and reports `SKIP <pane> reason=pending-jobs`. A stopped job, such as a background `sudo` suspended on `tty output` while waiting for a password, is detected before dispatch from Herdr's `shell_pid` and one process-table snapshot per pass, so the pane is reported as `reason=stopped-job pid=N` and receives no input, including in dry runs. Running background jobs remain the owning shell's decision, because a disowned process looks identical from outside. Job skips print even in quiet mode and name the pane by its Herdr label or title (control characters replaced, 40 characters at most).
+Shells with jobs are never replaced. The invoking shell checks its own job table before any pane is touched and lists the blocking jobs (`jobs -l`); `refresh-dry` reports the same condition without stopping. For other panes, the owning shell rechecks `${#jobstates}` when the refresh command arrives and reports `SKIP <pane> reason=pending-jobs`. A stopped job, such as a background `sudo` suspended on `tty output` while waiting for a password, is detected before dispatch from Herdr's `shell_pid` and one process-table snapshot per pass, so the pane is reported as `reason=stopped-job pid=N` and receives no input, including in dry runs. Running background jobs remain the owning shell's decision, because a disowned process looks identical from outside. Job skips print even in quiet mode and name the pane by its Herdr label or title (control characters replaced, 40 characters at most); `FAIL` lines include the same sanitized pane label.
 
-The controller completes a read-only inspection pass before mutation, then rechecks each candidate immediately before every dispatch. Herdr reports foreground process ownership but does not expose whether an idle shell has partially typed, unsent input; avoid starting a bulk refresh while composing a command in another idle pane. The submitted command shields the absolute worker path behind a disposable, stderr-suppressed no-op so a lost leading input character cannot corrupt the worker invocation.
+The controller completes a read-only inspection pass before mutation, then rechecks each candidate immediately before every dispatch. Panes running nested Zsh subshells (`reason=nested-shell`) or active/blocked coding agents (`reason=agent-active`) are skipped alongside non-Zsh foreground processes. Herdr reports foreground process ownership but does not expose whether an idle shell has partially typed, unsent input; avoid starting a bulk refresh while composing a command in another idle pane. The submitted command shields the absolute worker path behind a disposable, stderr-suppressed no-op so a lost leading input character cannot corrupt the worker invocation, and refuses commands exceeding safe macOS canonical line-input bounds (`reason=command-too-long`).
 
 Before discovery, the controller asks the managed compatibility resolver for a
 CLI matching the persistent Herdr server. Dry runs are strictly read-only: they
 use the current compatible CLI or an already validated cached client and never
 download or populate the cache. Mutating refreshes first save the current
 compatible CLI or, only when necessary, fetch the exact server version from the
-official Herdr GitHub release. Downloads require the expected official asset
+official Herdr GitHub release, while pruning obsolete cached client binaries
+beyond the three newest entries. Downloads require the expected official asset
 URL, release metadata, byte size, SHA-256 digest, and reported client
 version/protocol to agree before atomic publication. Cache directories and
 clients are user-owned mode `0700`; symlinks and unsafe directory chains are
@@ -84,16 +90,16 @@ cache or network operation. Quiet public refreshes suppress routine cache and
 download notices while preserving resolver warnings and hard errors. This
 avoids an automatic server restart, which would terminate pane processes.
 
-Completion uses unique files inside a controller-owned mode-`0700` temporary directory rather than terminal output. Workers atomically publish an exact digest in a mode-`0600` file only after validation and clearing; bounded file waiters run concurrently, reject malformed files and symlinks, and remove the complete directory afterward. If a dispatch response fails or no acknowledgement arrives, the controller rechecks and retries only that unresolved pane once. Successful peers are never redispatched, and a valid acknowledgement that arrives between rounds completes the pane without a second injection. Both attempts reuse the same private acknowledgement identity, so the worker's atomic publication gate permits only one delayed or duplicate delivery to replace the shell. A malformed acknowledgement or a pane that is no longer exclusively idle Zsh fails immediately; recovered public refreshes remain silent. Each worker also has a shorter internal deadline, preventing a timed-out preflight from replacing its shell later.
+Completion uses unique files inside a controller-owned mode-`0700` temporary directory rather than terminal output. Workers atomically publish an exact digest in a mode-`0600` file only after validation and clearing; bounded sliding-window file waiters run concurrently with per-pane wall-clock deadlines, reject malformed files and symlinks, and remove the complete directory afterward. If a dispatch response fails or no acknowledgement arrives, the controller rechecks and retries only that unresolved pane once. Successful peers are never redispatched, and a valid acknowledgement that arrives between rounds completes the pane without a second injection. Both attempts reuse the same private acknowledgement identity, so the worker's atomic publication gate permits only one delayed or duplicate delivery to replace the shell. A malformed acknowledgement or a pane that is no longer exclusively idle Zsh fails immediately; recovered public refreshes remain silent. Each worker also has a shorter internal deadline, preventing a timed-out preflight from replacing its shell later.
 
 Each acknowledgement deadline defaults to 15 seconds. `refresh` and
 `refresh-dry` accept `--timeout-ms N` for values from 100 through 60000 and pass
-the value unchanged to the controller; timeout failures include the effective
-deadline in their diagnostic output.
+the value to both the controller and local worker; timeout failures include the
+effective deadline in their diagnostic output.
 
 Failed mutating refreshes save one redacted JSON record under `${XDG_STATE_HOME:-$HOME/.local/state}/herdr-refresh`; successful commands and dry runs never write a record. The directory is mode `0700`, records are mode `0600`, publication is atomic, and only the ten newest matching records are retained. A record contains a UTC timestamp, controller or current-shell component, normalized reason tokens, original exit status, installed Herdr client version, and aggregate counts. It never contains commands, pane IDs or output, cwd, environment variables, session names, socket or temporary paths, raw stderr, or acknowledgement material. Failure recording is best-effort and cannot replace the original refresh status.
 
-Run `refresh-doctor` after a failure or package update. It uses Herdr's supported status command, a controller dry run whose output it suppresses, and the current-shell validation worker, then validates and prints only the newest redacted record. The doctor suppresses raw child output and the Herdr socket path, never sends pane input, and never updates, stops, or restarts Herdr. A server restart remains manual because stopping Herdr exits its pane processes.
+Run `refresh-doctor` after a failure or package update. It checks Herdr's supported status JSON, refresh module syntax/manifest integration, a controller dry run (surfacing only allowlisted counts or failure reason codes), and the current-shell validation worker (surfacing only allowlisted failure reason codes), then validates and prints the retained record count, newest redacted record, and share-safe remediation guidance (`refresh-doctor --clear-history` clears retained records). The doctor suppresses raw child output and the Herdr socket path, never sends pane input, and never updates, stops, or restarts Herdr. A server restart remains manual because stopping Herdr exits its pane processes.
 
 The controller is safe to run directly because dry-run is its default. Its clear flag remains explicit because clear-by-default is a policy of the user-facing `refresh` function:
 
